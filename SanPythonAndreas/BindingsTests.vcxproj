@@ -1,0 +1,83 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{E841AA9A-AC48-44B4-8B4E-9FA4E9FFB0EE}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>SanPythonRuntime</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'!='Debug'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>sanandreas</TargetName>
+    <OutDir>$(ProjectDir)..\$(Configuration)\tests\</OutDir>
+    <IntDir>$(ProjectDir)obj\BindingsTests\$(Configuration)\</IntDir>
+    <PythonSdk>$(ProjectDir)..\dependencies\python311-x86</PythonSdk>
+    <TargetExt>.pyd</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\dependencies\pybind11\include;$(PythonSdk)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>SPA_BINDINGS_TEST;WIN32;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'!='Debug'">MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(PythonSdk)\libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>python311.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="PythonRuntime.h" />
+    <ClInclude Include="RuntimeApi.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="framework.h" />
+    <ClCompile Include="Bindings.cpp" />
+    <ClInclude Include="Bindings.h" />
+    <ClInclude Include="PythonIncludes.h" />
+    <ClInclude Include="BuildInfo.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="PrepareBundledPython" BeforeTargets="ClCompile">
+    <Error Condition="'$(Platform)'!='Win32'" Text="Use Win32/x86 for GTA San Andreas." />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\Setup-Python.ps1&quot;" />
+    <Error Condition="!Exists('$(PythonSdk)\include\Python.h')" Text="Python 3.11 x86 SDK download failed." />
+    <Error Condition="!Exists('$(PythonSdk)\libs\python311.lib')" Text="Python 3.11 x86 import library missing." />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\Setup-Bindings.ps1&quot;" />
+  </Target>
+  <ItemGroup>
+    <None Include="..\tools\Setup-Python.ps1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\tests\NativeBindingsHost.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Vector3.h" />
+  </ItemGroup>
+</Project>

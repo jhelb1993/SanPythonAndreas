@@ -1,0 +1,12 @@
+{
+  "pybind11": {
+    "repository": "pybind/pybind11",
+    "ref": "v2.13.6",
+    "directory": "pybind11"
+  },
+  "plugin-sdk": {
+    "repository": "DK22Pac/plugin-sdk",
+    "ref": "62a1080902627b3edec0124acf02127ba8c0dcdb",
+    "directory": "plugin-sdk"
+  }
+}

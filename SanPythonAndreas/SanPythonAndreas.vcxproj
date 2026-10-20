@@ -1,0 +1,156 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{4c518ea6-ac43-4e9c-b292-e2081a1288d0}</ProjectGuid>
+    <RootNamespace>SanPythonAndreas</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <TargetExt>.asi</TargetExt>
+    <OutDir>$(ProjectDir)..\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\Host\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <PluginSdk>$(ProjectDir)..\dependencies\plugin-sdk</PluginSdk>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>RW;GTASA;PLUGIN_SGV_10US;WIN32;_DEBUG;SANPYTHONANDREAS_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(PluginSdk)\shared;$(PluginSdk)\shared\game;$(PluginSdk)\plugin_sa;$(PluginSdk)\plugin_sa\game_sa;$(PluginSdk)\plugin_sa\game_sa\rw;$(PluginSdk)\plugin_sa\game_sa\enums;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>RW;GTASA;PLUGIN_SGV_10US;WIN32;NDEBUG;SANPYTHONANDREAS_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(PluginSdk)\shared;$(PluginSdk)\shared\game;$(PluginSdk)\plugin_sa;$(PluginSdk)\plugin_sa\game_sa;$(PluginSdk)\plugin_sa\game_sa\rw;$(PluginSdk)\plugin_sa\game_sa\enums;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="GameBridge.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="GameBridge.cpp" />
+    <ClCompile Include="GtaSdk.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ItemGroup>
+    <ProjectReference Include="PythonRuntime.vcxproj">
+      <Project>{28BAF8B5-ED61-48E0-95D1-A925049DA8C8}</Project>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="RuntimeApi.h" />
+  </ItemGroup>
+  <Target Name="StageRuntime" AfterTargets="Build">
+    <Error Condition="!Exists('$(ProjectDir)..\runtime\SanPythonAndreas\python\python311.dll')" Text="Python bundle missing. Run tools/Setup-Python.ps1 and rebuild the solution." />
+    <MakeDir Directories="$(OutDir)SanPythonAndreas\scripts" />
+    <ItemGroup>
+      <BundledPython Include="$(ProjectDir)..\runtime\SanPythonAndreas\python\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BundledPython)" DestinationFiles="@(BundledPython-&gt;'$(OutDir)SanPythonAndreas\python\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\Stage-Scripts.ps1&quot; -OutputRoot &quot;$(OutDir).&quot;" />
+  </Target>
+  <ItemGroup>
+    <CustomBuild Include="..\runtime\SanPythonAndreas\_spa_runtime.py">
+      <Message>Updating Python scripting API and F5 example</Message>
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)..\tools\Stage-Scripts.ps1" -OutputRoot "$(OutDir)."</Command>
+      <AdditionalInputs>$(ProjectDir)..\runtime\SanPythonAndreas\scripts\example_teleport.py;$(ProjectDir)..\runtime\SanPythonAndreas\scripts\example_position.py;$(ProjectDir)..\runtime\SanPythonAndreas\scripts\example_heal.py;$(ProjectDir)..\runtime\SanPythonAndreas\scripts\diagnose_f5.py;$(ProjectDir)..\runtime\SanPythonAndreas\sanandreas.pyi;$(ProjectDir)..\runtime\SanPythonAndreas\scripts\main.py;$(ProjectDir)..\tools\Stage-Scripts.ps1;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs>$(OutDir)SanPythonAndreas\_spa_runtime.py;$(OutDir)SanPythonAndreas\sanandreas.pyi;$(OutDir)SanPythonAndreas\scripts\example_heal.py;$(OutDir)SanPythonAndreas\scripts\diagnose_f5.py;$(OutDir)SanPythonAndreas\scripts\example_position.py;$(OutDir)SanPythonAndreas\scripts\example_teleport.py</Outputs>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="GtaSdk.h" />
+    <ClInclude Include="BuildInfo.h" />
+  </ItemGroup>
+  <Target Name="PrepareSdk" BeforeTargets="ClCompile">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\Setup-Bindings.ps1&quot;" />
+    <Error Condition="!Exists('$(PluginSdk)\plugin_sa\game_sa\CPed.h')" Text="Plugin-SDK headers missing after setup." />
+  </Target>
+</Project>

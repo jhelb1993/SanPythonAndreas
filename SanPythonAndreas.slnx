@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="SanPythonAndreas/SanPythonAndreas.vcxproj" Id="4c518ea6-ac43-4e9c-b292-e2081a1288d0" />
+  <Project Path="SanPythonAndreas/PythonRuntime.vcxproj" Id="28baf8b5-ed61-48e0-95d1-a925049da8c8" />
+</Solution>

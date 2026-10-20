@@ -1,0 +1,11 @@
+.vs/
+Debug/
+Release/
+obj/
+__pycache__/
+*.pyc
+*.log
+*.vcxproj.user
+dependencies/
+runtime/SanPythonAndreas/python/
+backups/
