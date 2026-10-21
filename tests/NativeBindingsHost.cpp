@@ -63,6 +63,7 @@ namespace
         int generation; SpaPlayerVehicle data;
         bool damaged = true, burning = true, engineBroken = true;
         bool wrecked = false, unsupported = false;
+        int primary = 3, secondary = 6;
     };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
@@ -100,6 +101,25 @@ namespace
         return 1;
     }
     void __cdecl CloseVehicle(DWORD token) { vehicleHandles.erase(token); }
+    int __cdecl VehicleColors(DWORD token, int* primary, int* secondary)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        *primary = car.primary; *secondary = car.secondary;
+        return 0;
+    }
+    int __cdecl SetVehicleColor(DWORD token, int channel, int color)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        if (channel < 0 || channel > 1 || color < 0 || color > 127) return 4;
+        if (channel == 0) car.primary = color; else car.secondary = color;
+        return 0;
+    }
     int __cdecl SetVehicleHealth(DWORD token, float value)
     {
         if (!ready) return 1;
@@ -338,7 +358,7 @@ namespace
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
         SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
-        SetVehicleHealth, RepairVehicle};
+        SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor};
     struct Init
     {
         Init() { bindings::SetHost(&api); }

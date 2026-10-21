@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 19
+        self.api._host_api_version = 20
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -86,6 +86,9 @@ class RuntimeTests(unittest.TestCase):
         self.api._leave_player_vehicle = self.leave_vehicle
         self.api._set_vehicle_health = self.set_vehicle_health
         self.api._repair_vehicle = self.repair_vehicle
+        self.vehicle_colors = {}
+        self.api._vehicle_colors = self.read_vehicle_colors
+        self.api._set_vehicle_color = self.set_vehicle_color
         self.repair_count = 0
         self.exit_pending = False
         self.seat_busy = False
@@ -284,6 +287,19 @@ class RuntimeTests(unittest.TestCase):
     def repair_vehicle(self, token):
         self.set_vehicle_health(token, 1000)
         self.repair_count += 1
+
+    def read_vehicle_colors(self, token):
+        self.vehicle_info(token)
+        return tuple(self.vehicle_colors.setdefault(self.vehicle_handles[token], [3, 6]))
+
+    def set_vehicle_color(self, token, channel, value):
+        self.require_game_thread()
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError("color must be int")
+        if not 0 <= value <= 127:
+            raise ValueError("color out of bounds")
+        self.read_vehicle_colors(token)
+        self.vehicle_colors[self.vehicle_handles[token]][channel] = value
 
     def read_weapon(self):
         if self.stats is None:
@@ -548,7 +564,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 19
+        self.api._host_api_version = 20
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1615,6 +1631,42 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_vehicle_colors_preserve_other_channel_and_vehicle(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        other = self.api.spawn_vehicle(411, (4, 5, 6))
+        self.assertEqual((car.primary_color, car.secondary_color), (3, 6))
+        car.primary_color = 127
+        self.assertEqual((car.primary_color, car.secondary_color), (127, 6))
+        car.secondary_color = 0
+        self.assertEqual((car.primary_color, car.secondary_color), (127, 0))
+        self.assertEqual((other.primary_color, other.secondary_color), (3, 6))
+        car.repair()
+        self.assertEqual((car.primary_color, car.secondary_color), (127, 0))
+        for name in ("primary_color", "secondary_color"):
+            for value in (True, 1.5, "3", None):
+                with self.assertRaises(TypeError):
+                    setattr(car, name, value)
+            for value in (-1, 128):
+                with self.assertRaises(ValueError):
+                    setattr(car, name, value)
+        self.game_thread = False
+        for action in (lambda: car.primary_color, lambda: setattr(car, "secondary_color", 4)):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.game_thread = True
+        self.stats = None
+        with self.assertRaises(RuntimeError):
+            _ = car.secondary_color
+        self.stats = [25, 100]
+        self.invalid_vehicle_handles.add(car._token)
+        with self.assertRaises(self.api.InvalidVehicleError):
+            car.secondary_color = 4
+        other.close()
+        for action in (lambda: other.primary_color, lambda: setattr(other, "primary_color", 4)):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
     def test_vehicle_health_and_repair_refresh_same_car_without_mutating_snapshot(self):
         self.models_loaded.add(411)
         car = self.api.spawn_vehicle(411, (10, 20, 30))
@@ -1779,6 +1831,12 @@ raise RuntimeError('broken')
         self.assertEqual(self.model_leases, {})
         press("E")
         self.assertTrue(self.api.player().is_driver)
+        self.keys.clear()
+        self.runtime._tick(True)
+        self.keys.add(0x71)  # F2
+        self.runtime._tick(True)
+        entity = next(iter(self.owned_vehicles))
+        self.assertEqual(self.vehicle_colors[entity], [4, 7])
         for code, expected in ((0x72, 500), (0x73, 1000)):
             self.keys.clear()
             self.runtime._tick(True)

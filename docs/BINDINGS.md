@@ -556,3 +556,21 @@ Individual damage types, including punctured tyres, broken windows and fire,
 have not been separately reported as tested.
 Release/x86 build, 83 Python tests, 46 native binding tests and bundle
 verification passed.
+
+## Vehicle colors (API 20)
+
+`Vehicle.primary_color` and `Vehicle.secondary_color` read the current vehicle's
+raw palette indices and accept integer values 0..127 (no bools or floats).
+The pinned CVehicleModelInfo header defines the standard 128-entry palette.
+Normal automobiles only; active gameplay and a valid checked handle are required.
+
+Native writes change only the chosen CVehicle byte, preserving the other color,
+tertiary/quaternary colors, model defaults and other cars. Repair preserves colors.
+No shared model/color table is changed and no automatic paintjob removal occurs.
+Visible color coverage depends on model materials and paintjobs.
+`VehicleInfo` snapshots remain unchanged.
+
+The Infernus example and README bind F2 to advance both indices modulo 128.
+Game acceptance is pending.
+Release/x86 build, 84 Python tests, 49 native binding tests and bundle
+verification passed.

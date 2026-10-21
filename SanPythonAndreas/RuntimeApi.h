@@ -68,5 +68,8 @@ struct SpaHostApi
     // 4 invalid health. Setter changes only health; repair resets physical damage.
     int (__cdecl* setVehicleHealth)(DWORD, float);
     int (__cdecl* repairVehicle)(DWORD);
+    // Colors: 0 success, 1 inactive, 2 stale handle, 3 unsupported, 4 invalid.
+    int (__cdecl* vehicleColors)(DWORD, int*, int*);
+    int (__cdecl* setVehicleColor)(DWORD, int, int); // channel 0 primary / 1 secondary; color 0..127
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

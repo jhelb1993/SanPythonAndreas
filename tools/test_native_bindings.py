@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 19)
+        self.assertEqual(sa._host_api_version, 20)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,53 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_colors_preserve_channels_other_cars_and_repairs(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        other = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        self.assertEqual(sa._vehicle_colors(car), (3, 6))
+        sa._set_vehicle_color(car, 0, 127)
+        self.assertEqual(sa._vehicle_colors(car), (127, 6))
+        sa._set_vehicle_color(car, 1, 0)
+        self.assertEqual(sa._vehicle_colors(car), (127, 0))
+        self.assertEqual(sa._vehicle_colors(other), (3, 6))
+        sa._repair_vehicle(car)
+        self.assertEqual(sa._vehicle_colors(car), (127, 0))
+
+    def test_vehicle_colors_validate_indices_and_channel_types(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value in (True, 1.5, "3", None):
+            with self.assertRaises(TypeError):
+                sa._set_vehicle_color(car, 0, value)
+        for value in (-1, 128, 99999999999999999999999999):
+            with self.assertRaises((ValueError, OverflowError)):
+                sa._set_vehicle_color(car, 0, value)
+        for channel in (-1, 2):
+            with self.assertRaises(ValueError):
+                sa._set_vehicle_color(car, channel, 3)
+        with self.assertRaises(TypeError):
+            sa._set_vehicle_color(car, True, 3)
+        self.assertEqual(sa._vehicle_colors(car), (3, 6))
+
+    def test_vehicle_colors_guard_threads_inactive_invalid_and_unsupported_cars(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (lambda: sa._vehicle_colors(car), lambda: sa._set_vehicle_color(car, 1, 5)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._test_vehicle_damage(car, False, True)
+        for action in (lambda: sa._vehicle_colors(car), lambda: sa._set_vehicle_color(car, 1, 5)):
+            with self.assertRaises(RuntimeError):
+                action()
+        sa._close_vehicle_handle(car)
+        for action in (lambda: sa._vehicle_colors(car), lambda: sa._set_vehicle_color(car, 1, 5)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_vehicle_health_changes_do_not_repair_physical_damage(self):
         sa._test_model_loaded(411, True)

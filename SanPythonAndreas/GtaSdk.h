@@ -29,6 +29,8 @@ namespace sdk
     int LeavePlayerVehicle() noexcept;
     int SetVehicleHealth(DWORD token, float value) noexcept;
     int RepairVehicle(DWORD token) noexcept;
+    int VehicleColors(DWORD token, int* primary, int* secondary) noexcept;
+    int SetVehicleColor(DWORD token, int channel, int color) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

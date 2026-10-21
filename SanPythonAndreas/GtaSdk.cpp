@@ -769,6 +769,31 @@ int sdk::RepairVehicle(DWORD token) noexcept
     return 0;
 }
 
+int sdk::VehicleColors(DWORD token, int* primary, int* secondary) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE) return 3;
+    *primary = vehicle->m_nPrimaryColor;
+    *secondary = vehicle->m_nSecondaryColor;
+    return 0;
+}
+
+int sdk::SetVehicleColor(DWORD token, int channel, int color) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    if (channel < 0 || channel > 1 || color < 0 || color > 127) return 4;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE
+        || !Accessible(vehicle, sizeof(CVehicle), true)) return 3;
+    // Per-entity palette indices; never change the shared model/color table.
+    if (channel == 0) vehicle->m_nPrimaryColor = static_cast<unsigned char>(color);
+    else vehicle->m_nSecondaryColor = static_cast<unsigned char>(color);
+    return 0;
+}
+
 int sdk::RequestModel(int model, DWORD* token) noexcept
 {
     if (!game::IsGameThread() || !game::IsReady()) return 1;

@@ -244,6 +244,14 @@ def damage_spawned_vehicle():
         spawned_vehicle.health = 500  # Finite 0..1000; low values can ignite cars.
 
 
+@key("F2")  # Cycle the two palette indices; visible areas depend on the model.
+def cycle_vehicle_colors():
+    if spawned_vehicle is not None:
+        spawned_vehicle.primary_color = (spawned_vehicle.primary_color + 1) % 128
+        spawned_vehicle.secondary_color = (spawned_vehicle.secondary_color + 1) % 128
+        print("Colors:", spawned_vehicle.primary_color, spawned_vehicle.secondary_color)
+
+
 @key("F4")  # Full repair: health, body, doors, windows, tyres and engine/fire state.
 def repair_spawned_vehicle():
     if spawned_vehicle is not None:

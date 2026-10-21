@@ -86,6 +86,18 @@ namespace
         }
     }
 
+    void VehicleColorStatus(int status)
+    {
+        switch (status)
+        {
+        case 0: return;
+        case 2: throw InvalidVehicle("vehicle was removed or its handle closed");
+        case 3: throw std::runtime_error("vehicle colors currently support normal automobiles only");
+        case 4: throw py::value_error("color must be a palette index between 0 and 127");
+        default: throw std::runtime_error("vehicle colors require active gameplay");
+        }
+    }
+
     void SetPlayerHealth(py::handle value)
     {
         RequireGameThread();
@@ -301,6 +313,20 @@ PYBIND11_MODULE(sanandreas, module)
     module.def("_repair_vehicle", [](py::handle token) {
         RequireGameThread();
         VehicleMaintenanceStatus(host->repairVehicle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token")));
+    });
+    module.def("_vehicle_colors", [](py::handle token) {
+        RequireGameThread();
+        int primary = 0, secondary = 0;
+        VehicleColorStatus(host->vehicleColors(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &primary, &secondary));
+        return py::make_tuple(primary, secondary);
+    });
+    module.def("_set_vehicle_color", [](py::handle token, py::handle channel, py::handle color) {
+        RequireGameThread();
+        const int index = BoundedInteger(channel, 1, "color channel");
+        const int value = BoundedInteger(color, 127, "color");
+        VehicleColorStatus(host->setVehicleColor(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), index, value));
     });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {

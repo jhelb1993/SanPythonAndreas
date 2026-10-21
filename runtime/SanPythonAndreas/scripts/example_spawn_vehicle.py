@@ -1,6 +1,6 @@
 """Import example_spawn_vehicle in main.py.
 
-C: spawn, E: driver, Q: exit, D: remove, F3: health 500, F4: repair.
+C: spawn, E: driver, Q: exit, D: remove, F2: colors, F3: health 500, F4: repair.
 
 Use outdoors with room next to the player. Exit before removing the car.
 """
@@ -76,6 +76,20 @@ def enter_infernus():
     except (RuntimeError, ValueError) as error:
         print("Vehicle entry rejected:", error)
         sa.show_text("Need a free seat in a nearby stationary car.")
+
+
+@sa.on_key_down("F2")
+def cycle_colors():
+    try:
+        if _vehicle is None:
+            sa.show_text("Spawn an Infernus with C first.")
+            return
+        _vehicle.primary_color = (_vehicle.primary_color + 1) % 128
+        _vehicle.secondary_color = (_vehicle.secondary_color + 1) % 128
+        sa.show_text(f"Colors: {_vehicle.primary_color} / {_vehicle.secondary_color}")
+    except (RuntimeError, ValueError) as error:
+        print("Vehicle color change rejected:", error)
+        sa.show_text("Cannot recolor this vehicle. See the Python log.")
 
 
 @sa.on_key_down("F3")
