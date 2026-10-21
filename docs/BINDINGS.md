@@ -153,3 +153,5 @@ Quervergleich: [gta-reversed EntryExit](https://github.com/gta-reversed/gta-reve
 und [EntryExitManager](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/EntryExitManager.cpp).
 Automatisierte Tests simulieren Bereichswechsel und Übergangsablehnung;
 Streaming, Kamera und Kollisionsverhalten müssen im Spiel geprüft werden.
+Prüfstand API 6: Release/x86-Build, 15 native Binding-Tests, Paketprüfung und
+21 Python-Runtime-Tests bestanden. Die Spielabnahme bleibt offen.
