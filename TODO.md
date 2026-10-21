@@ -133,11 +133,13 @@ fremde Fahrzeuge sowie Fahrzeuge mit Insassen/Ein-/Ausstieg/Anhänger werden
 nicht gelöscht. Reset-/Fehler-Cleanup löscht leere eigene Autos; besetzte oder
 verbundene Autos werden an GTA zurückgegeben. `close()` löscht weiterhin nichts.
 Beispiel: `example_spawn_vehicle.py` mit C zum Erzeugen und D zum
-Abbrechen/Entfernen. Spielabnahme offen.
+Abbrechen/Entfernen. Erzeugen und Entfernen vom Nutzer im Spiel bestätigt.
+Prüfstand: Release/x86-Build, 79 Python-Tests, 38 native Binding-Tests und
+Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen.
 
 - [ ] Modelle über Namen und IDs auflösen und vor dem Erzeugen laden.
-- [ ] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 implementiert (normale Autos, Außenbereich), Spielabnahme offen.
-- [ ] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17 implementiert, Spielabnahme offen.
+- [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
+- [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
 - [ ] Position, Heading und Geschwindigkeit lesen/setzten.
 - [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen.

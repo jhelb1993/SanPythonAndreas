@@ -486,4 +486,7 @@ complete save/load detection remain future work.
 
 Import `example_spawn_vehicle` in `scripts/main.py`: C loads and creates an Infernus
 beside the player; D cancels pending loading or deletes that car after exiting.
-Repeated C presses do not accumulate cars. Game acceptance is pending.
+Repeated C presses do not accumulate cars. The user confirmed spawning and removing
+the vehicle in-game. Release/x86 build, 79 Python tests, 38 native binding tests and
+bundle verification passed. Individual reset/error scenarios still need separate
+in-game verification.
