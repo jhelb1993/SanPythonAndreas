@@ -15,6 +15,7 @@ Copy-Item -Force (Join-Path $source 'scripts\example_teleport.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_armour.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_money_wanted.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_weapons.py') $scripts
+Copy-Item -Force (Join-Path $source 'scripts\example_vehicle.py') $scripts
 $main = Join-Path $scripts 'main.py'
 if (-not (Test-Path -LiteralPath $main)) {
     Copy-Item (Join-Path $source 'scripts\main.py') $main

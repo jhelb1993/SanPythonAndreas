@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.10.0-dev.1`.
-- Aktuelle interne Host-API: Version `10` (Waffenverwaltung).
+- Aktuelle Paketversion: `0.11.0-dev.1`.
+- Aktuelle interne Host-API: Version `11` (Fahrzeug-Momentaufnahme und Spielerzustände).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 24 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 26 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `10` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `11` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -221,7 +221,7 @@ Gesundheitsboni brauchen den Spieltest mit unterschiedlichen Spielständen.
 Prüfstand API 9: Release/x86-Build, 21 native Tests, 26 Python-Tests und
 Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
 
-## Waffenverwaltung (API 10, Spielabnahme offen)
+## Waffenverwaltung (API 10, vom Nutzer bestätigt)
 
 ABI um `playerWeapon(int*, unsigned int*)` und `playerWeaponAction` erweitert.
 Aktionen 0/1/2/3 entsprechen Geben/Auswählen/Einzeln entfernen/Alles entfernen.
@@ -253,6 +253,32 @@ bleibt bei Einzelaktionen ausgeschlossen. `clear_weapons` entfernt das gesamte
 Inventar inklusive Sonderausrüstung und vorher vorhandener Waffen.
 
 Prüfstand API 10: Release/x86-Build, 24 native Tests, 28 Python-Tests und
-Paketprüfung bestanden. Modellstreaming, Handmodelle, Schießen, Slotwechsel und
-Fahrzeugablehnung brauchen die Spielabnahme. Native Tests simulieren den Host,
-ohne die realen GTA-Funktionen auszuführen.
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt. Native Tests
+simulieren den Host, ohne die realen GTA-Funktionen auszuführen.
+
+## Fahrzeug-Momentaufnahme und Spielerzustände (API 11, Spielabnahme offen)
+
+ABI ergänzt `SpaPlayerVehicle` (Modell-ID, Fahrerflag, Gesundheit, XYZ) und
+`playerVehicle(SpaPlayerVehicle*)`. Rückgabe -1: nicht verfügbar/inkonsistent,
+0: zu Fuß, 1: Daten gefüllt. Keine Spielzeiger überqueren die DLL-Grenze.
+
+`CurrentPlayerInfo()` prüft Spieler, Thread, Spielzustand und Info-Zuordnung.
+Der Adapter wertet zuerst `CPed::bInVehicle` aus; ein zu Fuß noch gespeichertes
+`m_pVehicle` wird ignoriert. Bei Fahrzeugzustand prüft er dessen Speicher und
+ob der aktuelle Ped Fahrer oder ein Eintrag der Passagierliste ist. Position
+kommt aus Matrix bzw. einfacher Platzierung; Koordinaten/Gesundheit müssen
+endlich sein. Layoutprüfung: `CVehicle::m_fHealth` bei 0x4C0. Keine neuen
+Spiel-Funktionsadressen; es werden nur gepinnte SDK-Felder gelesen.
+
+pybind11 bindet `VehicleInfo` ohne öffentlichen Konstruktor und ohne Setter;
+die Position ist ein abgetrennter `Vector3`. Jeder Aufruf erzeugt neue Werte.
+`player.is_alive` basiert auf Gesundheit; `vehicle`, `in_vehicle` und `is_driver`
+fragen den nativen Zustand bei jedem Zugriff neu ab. Alte Momentaufnahmen bleiben
+nach Fahrzeug-/Spielerwechsel unverändert, ohne eine Objektidentität zu behaupten.
+Diese API ersetzt keine dauerhaften, generationgeprüften Fahrzeug-Handles.
+
+Tests prüfen Fußzustand, Fahrer/Passagier, Modell-/Positionswechsel, unveränderliche
+Snapshots, Tod, fehlenden Spieler, Übergangsfehler, Threadprüfung und V-Beispiel.
+Reale Sitzzuordnung und Speicherzugriffe brauchen die Spielabnahme.
+Prüfstand API 11: Release/x86-Build, 26 native Tests, 30 Python-Tests und
+Paketprüfung bestanden. Spielabnahme offen.

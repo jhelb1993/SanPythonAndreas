@@ -450,8 +450,51 @@ import example_weapons
 - J: vorhandene Pistole auswählen.
 - K: Pistole entfernen.
 
-ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+API-10-Funktion vom Nutzer im Spiel bestätigt. Spieltest:
 zu Fuß N/M/J/K prüfen, schießen und Munitionsanzeige kontrollieren, N wiederholen;
 mit anderer Handfeuerwaffe den Slotwechsel prüfen. Im Fahrzeug muss die Aktion
 abgewiesen werden und nach Aussteigen wieder funktionieren. Auch Pause,
 Fokuswechsel, Tod und Spielstandwechsel prüfen.
+
+## Spielerzustände und aktuelles Fahrzeug (API 11)
+
+Paket `0.11.0-dev.1`, Host-API 11:
+
+```python
+player = sa.player()
+if player is not None:
+    print(player.is_alive, player.in_vehicle, player.is_driver)
+    vehicle = player.vehicle
+    if vehicle is not None:
+        print(vehicle.model_id, vehicle.health, vehicle.position, vehicle.is_driver)
+```
+
+`is_alive` prüft `health > 0`. `in_vehicle` gilt für Fahrer und Passagiere;
+`is_driver` ist zu Fuß und auf dem Beifahrersitz falsch. Bei fehlendem Spieler
+lösen Eigenschaften wie bisher `RuntimeError` aus; `sa.player()` liefert `None`.
+
+`player.vehicle` liefert zu Fuß `None`, sonst eine unveränderliche `VehicleInfo`
+mit `model_id`, `health`, `position` (Vector3) und `is_driver`. Das ist eine
+abgetrennte Momentaufnahme ohne Spielzeiger. Gespeicherte Daten bleiben nach
+Aussteigen, Fahrzeugzerstörung oder Spielstandwechsel lesbar, aktualisieren sich
+aber nicht. Für aktuelle Werte `player.vehicle` erneut abfragen. Dauerhafte
+Handles, Fahrzeugänderungen und Spawn-Funktionen folgen separat.
+
+Die Sitzzuordnung wird gegen Fahrer und Passagierliste geprüft. Während eines
+unvollständigen Ein-/Ausstiegs kann `RuntimeError` auftreten; im nächsten Frame
+erneut versuchen. Gesundheit ist GTAs roher Fahrzeugwert (normalerweise 1000
+bei unbeschädigtem Fahrzeug), kein Prozentwert; auch negative Werte sind möglich.
+Es wird kein Maximalwert und keine Aussage über Fahrbereitschaft abgeleitet.
+
+In der eigenen `main.py` ergänzen:
+
+```python
+import example_vehicle
+```
+
+V zeigt Fuß-/Fahrzeugzustand, Sitzrolle, Modell-ID und Gesundheit im HUD;
+die Position steht zusätzlich im Python-Log. ASI und Datenordner gemeinsam aus
+`Release` aktualisieren. Spielabnahme offen: zu Fuß, als Fahrer und als Passagier
+prüfen; aussteigen, anderes Fahrzeug betreten und erneut V drücken. Nach Pause,
+Alt-Tab, Tod und Spielstandwechsel kontrollieren. Gespeicherte Momentaufnahmen
+dürfen sich dabei nicht verändern.

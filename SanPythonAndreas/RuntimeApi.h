@@ -2,6 +2,14 @@
 #include <Windows.h>
 
 // Private host/runtime ABI. Keep both binaries from the same build together.
+struct SpaPlayerVehicle
+{
+    int modelId;
+    BOOL isDriver;
+    float health;
+    float x, y, z;
+};
+
 struct SpaHostApi
 {
     DWORD size;
@@ -32,5 +40,7 @@ struct SpaHostApi
     // Status: 0 success, 1 unavailable/dead, 2 restricted state, 3 not owned,
     // 4 invalid arguments, 5 model loading failed.
     int (__cdecl* playerWeaponAction)(int, int, unsigned int, BOOL);
+    // -1 unavailable player/invalid vehicle state; 0 on foot; 1 snapshot filled.
+    int (__cdecl* playerVehicle)(SpaPlayerVehicle*);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

@@ -16,6 +16,14 @@ namespace
     float armour = 10;
     int money = 500, wantedLevel = 1, wantedMaximum = 6;
     bool wantedBlocked = false;
+    int vehicleState = 0;
+    SpaPlayerVehicle vehicleData{411, TRUE, 750, 10, 20, 30};
+    int __cdecl ReadVehicle(SpaPlayerVehicle* value)
+    {
+        if (!ready) return -1;
+        if (vehicleState == 1) *value = vehicleData;
+        return vehicleState;
+    }
     std::array<int, 13> weaponIds{};
     std::array<unsigned int, 13> weaponAmmo{};
     int activeSlot = 0, weaponStatus = 0;
@@ -163,7 +171,7 @@ namespace
     }
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
-        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction};
+        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -179,6 +187,13 @@ void InstallTestControls(py::module_& module)
     module.def("_test_max_health", [](float value) { maximum = value; });
     module.def("_test_weapon_status", [](int value) { weaponStatus = value; });
     module.def("_test_reset_weapons", [] { weaponIds.fill(0); weaponAmmo.fill(0); activeSlot = weaponStatus = 0; });
+    module.def("_test_vehicle", [](int state, int model, float currentHealth, bool driver) {
+        vehicleState = state;
+        vehicleData = {model, driver ? TRUE : FALSE, currentHealth, 10, 20, 30};
+    }, py::arg("state") = 0, py::arg("model") = 411, py::arg("health") = 750, py::arg("driver") = true);
+    module.def("_test_vehicle_position", [](float x, float y, float z) {
+        vehicleData.x = x; vehicleData.y = y; vehicleData.z = z;
+    });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

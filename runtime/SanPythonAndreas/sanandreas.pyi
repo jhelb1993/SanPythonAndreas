@@ -84,6 +84,20 @@ class WeaponType(IntEnum):
     CAMERA = 43
 
 
+class VehicleInfo:
+    """Immutable snapshot, not a handle. Read player.vehicle again to refresh."""
+    @property
+    def model_id(self) -> int: ...
+    @property
+    def is_driver(self) -> bool: ...
+    @property
+    def health(self) -> float:
+        """Raw GTA vehicle health; normally 1000 when undamaged, may be negative."""
+        ...
+    @property
+    def position(self) -> Vector3: ...
+
+
 class Player:
     """View of the current player. Every access rechecks game state and thread."""
     @property
@@ -139,6 +153,23 @@ class Player:
     @property
     def max_health(self) -> float:
         """Read-only player-specific health limit, maintained by GTA."""
+        ...
+    @property
+    def is_alive(self) -> bool:
+        """Health > 0. Missing player raises RuntimeError, as other properties do."""
+        ...
+    @property
+    def vehicle(self) -> VehicleInfo | None:
+        """Fresh snapshot for driver or passenger; None on foot.
+
+        Inconsistent seats during entry/exit and missing player raise RuntimeError.
+        """
+        ...
+    @property
+    def in_vehicle(self) -> bool: ...
+    @property
+    def is_driver(self) -> bool:
+        """False on foot and in a passenger seat."""
         ...
     @property
     def position(self) -> Vector3:

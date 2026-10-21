@@ -14,9 +14,10 @@ class NativeBindingsTests(unittest.TestCase):
     def setUp(self):
         sa._test_reset()
         sa._test_reset_weapons()
+        sa._test_vehicle()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 10)
+        self.assertEqual(sa._host_api_version, 11)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -91,7 +92,7 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._set_player_money(100), sa._player_wanted_level,
                  lambda: sa._set_player_wanted_level(3), sa._player_weapon,
                  lambda: sa._give_player_weapon(22), lambda: sa._select_player_weapon(0),
-                 lambda: sa._remove_player_weapon(22), sa._clear_player_weapons]
+                 lambda: sa._remove_player_weapon(22), sa._clear_player_weapons, sa._player_vehicle]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -235,6 +236,40 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_ready(False)
         with self.assertRaises(RuntimeError):
             sa._player_weapon()
+
+    def test_vehicle_snapshots_are_detached_and_immutable(self):
+        self.assertIsNone(sa._player_vehicle())
+        sa._test_vehicle(1)
+        before = sa._player_vehicle()
+        self.assertIsInstance(before, sa.VehicleInfo)
+        self.assertEqual((before.model_id, before.health, before.is_driver), (411, 750, True))
+        self.assertEqual(tuple(before.position), (10, 20, 30))
+        sa._test_vehicle(1, 400, 500, False)
+        sa._test_vehicle_position(100, 200, 300)
+        after = sa._player_vehicle()
+        self.assertEqual((after.model_id, after.health, after.is_driver), (400, 500, False))
+        self.assertEqual(tuple(after.position), (100, 200, 300))
+        self.assertEqual((before.model_id, before.health, before.is_driver), (411, 750, True))
+        self.assertEqual(tuple(before.position), (10, 20, 30))
+        for field, value in (("model_id", 400), ("health", 1000), ("is_driver", False), ("position", sa.Vector3())):
+            with self.assertRaises(AttributeError):
+                setattr(before, field, value)
+        with self.assertRaises(AttributeError):
+            before.position.x = 100
+        sa._test_vehicle(0)
+        self.assertIsNone(sa._player_vehicle())
+        self.assertEqual(before.model_id, 411)
+
+    def test_vehicle_query_handles_transitions_and_missing_player(self):
+        sa._test_vehicle(-1)
+        with self.assertRaises(RuntimeError):
+            sa._player_vehicle()
+        sa._test_vehicle(1, 411, -5, True)
+        sa._test_dead()
+        self.assertEqual(sa._player_vehicle().health, -5)
+        sa._test_ready(False)
+        with self.assertRaises(RuntimeError):
+            sa._player_vehicle()
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

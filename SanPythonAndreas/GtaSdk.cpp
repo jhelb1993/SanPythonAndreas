@@ -12,6 +12,7 @@
 #include <CWanted.h>
 #include <CWeaponInfo.h>
 #include "WeaponPolicy.h"
+#include "RuntimeApi.h"
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -25,6 +26,7 @@ static_assert(offsetof(CPed, m_fMaxHealth) == 0x544);
 static_assert(offsetof(CPed, m_fArmour) == 0x548);
 static_assert(offsetof(CPlayerInfo, m_nMoney) == 0xB8);
 static_assert(offsetof(CWanted, m_nWantedLevel) == 0x2C);
+static_assert(offsetof(CVehicle, m_fHealth) == 0x4C0);
 
 namespace
 {
@@ -274,6 +276,28 @@ int sdk::PlayerWeaponAction(int action, int id, unsigned int ammo, bool equip) n
         reinterpret_cast<Select>(0x5E6280)(player, static_cast<eWeaponType>(id));
     }
     return 0;
+}
+
+int sdk::ReadPlayerVehicle(SpaPlayerVehicle* value) noexcept
+{
+    const auto* info = CurrentPlayerInfo();
+    if (!info || !Accessible(info->m_pPed, sizeof(CPed))) return -1;
+    const CPed* player = info->m_pPed;
+    // m_pVehicle can retain an old vehicle outside the vehicle state.
+    if (!player->m_nPedFlags.bInVehicle) return 0;
+    const CVehicle* vehicle = player->m_pVehicle;
+    if (!vehicle || !Accessible(vehicle, sizeof(CVehicle))) return -1;
+    const bool driver = vehicle->m_pDriver == player;
+    bool passenger = false;
+    for (const CPed* occupant : vehicle->m_apPassengers)
+        if (occupant == player) passenger = true;
+    if (!driver && !passenger) return -1; // Entering/exiting or inconsistent seat mapping.
+    const CVector* position = vehicle->m_matrix ? &vehicle->m_matrix->pos : &vehicle->m_placement.m_vPosn;
+    if (!Accessible(position, sizeof(CVector)) || !std::isfinite(vehicle->m_fHealth)
+        || !std::isfinite(position->x) || !std::isfinite(position->y) || !std::isfinite(position->z)) return -1;
+    *value = {static_cast<int>(vehicle->m_nModelIndex), driver ? TRUE : FALSE,
+        vehicle->m_fHealth, position->x, position->y, position->z};
+    return 1;
 }
 
 bool sdk::ReadPlayerPosition(float* x, float* y, float* z) noexcept

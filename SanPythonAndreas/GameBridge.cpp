@@ -75,7 +75,7 @@ namespace
     const SpaHostApi hostApi{sizeof(SpaHostApi), HostReady, HostThread,
         game::ShowText, game::StartupLog, HostKeyDown, HostFocus,
         HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading, HostPlayerArmour, HostSetPlayerArmour,
-        HostPlayerMoney, HostSetPlayerMoney, HostPlayerWantedLevel, HostSetPlayerWantedLevel, HostPlayerWeapon, HostPlayerWeaponAction};
+        HostPlayerMoney, HostSetPlayerMoney, HostPlayerWantedLevel, HostSetPlayerWantedLevel, HostPlayerWeapon, HostPlayerWeaponAction, sdk::ReadPlayerVehicle};
     SpaTickFunction runtimeTick = nullptr;
     bool runtimeAttempted = false;
 
@@ -190,7 +190,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 10; Python 3.11 + SDK + pybind11 + weapons ---");
+    StartupLog("--- ASI loaded: host API 11; Python 3.11 + SDK + pybind11 + vehicle snapshot ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

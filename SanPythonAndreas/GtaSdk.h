@@ -1,4 +1,5 @@
 #pragma once
+struct SpaPlayerVehicle;
 namespace sdk
 {
     bool HasPlayer() noexcept;
@@ -12,6 +13,7 @@ namespace sdk
     bool WritePlayerWantedLevel(int value) noexcept;
     bool ReadPlayerWeapon(int* id, unsigned int* ammo) noexcept;
     int PlayerWeaponAction(int action, int id, unsigned int ammo, bool equip) noexcept;
+    int ReadPlayerVehicle(SpaPlayerVehicle* value) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

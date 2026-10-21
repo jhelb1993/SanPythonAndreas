@@ -7,7 +7,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 10
+BOOTSTRAP_API_VERSION = 11
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -143,6 +143,24 @@ class Player:
     @health.setter
     def health(self, value):
         sa._set_player_health(value)
+
+    @property
+    def is_alive(self):
+        return self.health > 0
+
+    @property
+    def vehicle(self):
+        """Detached read-only vehicle snapshot, or None while on foot."""
+        return sa._player_vehicle()
+
+    @property
+    def in_vehicle(self):
+        return self.vehicle is not None
+
+    @property
+    def is_driver(self):
+        vehicle = self.vehicle
+        return vehicle is not None and vehicle.is_driver
 
     @property
     def current_weapon(self):

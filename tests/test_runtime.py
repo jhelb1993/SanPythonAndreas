@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 10
+        self.api._host_api_version = 11
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -48,6 +48,9 @@ class RuntimeTests(unittest.TestCase):
         self.api._select_player_weapon = self.select_weapon
         self.api._remove_player_weapon = self.remove_weapon
         self.api._clear_player_weapons = self.clear_weapons
+        self.vehicle_data = None
+        self.vehicle_error = False
+        self.api._player_vehicle = self.read_vehicle
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -76,6 +79,11 @@ class RuntimeTests(unittest.TestCase):
         else:
             sys.modules["sanandreas"] = self.previous_api
         self.temp.cleanup()
+
+    def read_vehicle(self):
+        if self.stats is None or self.vehicle_error:
+            raise RuntimeError("vehicle unavailable")
+        return self.vehicle_data
 
     def read_weapon(self):
         if self.stats is None:
@@ -340,7 +348,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 10
+        self.api._host_api_version = 11
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -538,6 +546,59 @@ raise RuntimeError('broken')
         for stats in (None, [0, 100]):
             self.stats = stats
             press("N")
+        self.assertEqual(len(self.output), count)
+        self.assertNotIn("Disabled failing callback", self.log())
+
+    def test_player_states_and_vehicle_refresh_on_every_access(self):
+        player = self.api.player()
+        self.assertTrue(player.is_alive)
+        self.assertFalse(player.in_vehicle)
+        self.assertFalse(player.is_driver)
+        self.assertIsNone(player.vehicle)
+        self.vehicle_data = types.SimpleNamespace(model_id=411, is_driver=True, health=750, position=(1, 2, 3))
+        before = player.vehicle
+        self.assertTrue(player.in_vehicle)
+        self.assertTrue(player.is_driver)
+        self.vehicle_data = types.SimpleNamespace(model_id=400, is_driver=False, health=500, position=(4, 5, 6))
+        self.assertFalse(player.is_driver)
+        self.assertEqual(player.vehicle.model_id, 400)
+        self.assertEqual(before.model_id, 411)
+        self.vehicle_data = None
+        self.assertFalse(player.in_vehicle)
+        self.stats = [0, 100]
+        self.assertFalse(player.is_alive)
+        self.stats = None
+        for name in ("is_alive", "vehicle", "in_vehicle", "is_driver"):
+            with self.assertRaises(RuntimeError):
+                getattr(player, name)
+
+    def test_vehicle_example_handles_foot_driver_passenger_and_transition(self):
+        self.script((RUNTIME / "scripts" / "example_vehicle.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press():
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord("V"))
+            self.runtime._tick(True)
+        press()
+        self.assertEqual(self.output[-1], "Spieler zu Fuss")
+        self.vehicle_data = types.SimpleNamespace(model_id=411, is_driver=True, health=750, position=(1, 2, 3))
+        press()
+        self.assertEqual(self.output[-1], "Fahrer: Modell 411, Zustand 750")
+        count = len(self.output)
+        self.runtime._tick(True)
+        self.assertEqual(len(self.output), count)
+        self.vehicle_error = True
+        press()
+        self.assertIn("Fahrzeugwechsel", self.output[-1])
+        self.vehicle_error = False
+        self.vehicle_data = types.SimpleNamespace(model_id=400, is_driver=False, health=500, position=(4, 5, 6))
+        press()
+        self.assertEqual(self.output[-1], "Passagier: Modell 400, Zustand 500")
+        self.assertIn("Fahrzeugposition: (4, 5, 6)", self.log())
+        count = len(self.output)
+        self.stats = None
+        press()
         self.assertEqual(len(self.output), count)
         self.assertNotIn("Disabled failing callback", self.log())
 

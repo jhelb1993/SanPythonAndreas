@@ -85,7 +85,8 @@ API 6 ergänzt Interior-Wechsel beim Teleportieren; vom Nutzer im Spiel bestäti
 API 7 ergänzt Rüstung; vom Nutzer im Spiel bestätigt.
 API 8 ergänzt Geld und Fahndungslevel; vom Nutzer im Spiel bestätigt.
 API 9 verwendet das spielerspezifische Gesundheitslimit; vom Nutzer im Spiel bestätigt.
-API 10 ergänzt Waffenverwaltung zu Fuß; Spielabnahme steht noch aus.
+API 10 ergänzt Waffenverwaltung zu Fuß; vom Nutzer im Spiel bestätigt.
+API 11 ergänzt Spielerzustände und eine Fahrzeug-Momentaufnahme; Spielabnahme steht noch aus.
 
 - [x] Spielerposition lesen; F6-Beispiel zeigt Koordinaten an.
 - [x] Position setzen und Teleportieren im aktuellen Interior (vom Nutzer bestätigt).
@@ -95,8 +96,8 @@ API 10 ergänzt Waffenverwaltung zu Fuß; Spielabnahme steht noch aus.
 - [x] Rüstung lesen und setzen: API 7 vom Nutzer im Spiel bestätigt.
 - [x] Geld und Fahndungslevel lesen und verändern: API 8 vom Nutzer im Spiel bestätigt.
 - [x] Maximale Gesundheit mit den Spielerstatistiken abgleichen: API 9 vom Nutzer im Spiel bestätigt.
-- [ ] Waffen geben, auswählen und entfernen: API 10 implementiert (zu Fuß, IDs 1..18/22..38/41..43), Spielabnahme offen. Sonderausrüstung folgt separat.
-- [ ] Aktuelles Fahrzeug und Spielerzustände abfragen.
+- [x] Waffen geben, auswählen und entfernen: API 10 vom Nutzer im Spiel bestätigt (zu Fuß, IDs 1..18/22..38/41..43). Sonderausrüstung folgt separat.
+- [ ] Aktuelles Fahrzeug und Spielerzustände abfragen: API 11 implementiert (unveränderliche Fahrzeugdaten, is_alive/in_vehicle/is_driver), Spielabnahme offen. Dauerhafte Fahrzeug-Handles folgen in der Objektgrundlage.
 
 Abnahme: F5 heilt, F6 zeigt die Position, ein weiteres Beispiel teleportiert
 kontrolliert zwischen zwei bekannten Positionen.

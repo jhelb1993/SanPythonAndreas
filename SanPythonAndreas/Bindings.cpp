@@ -17,6 +17,14 @@ namespace
 {
     const SpaHostApi* host = nullptr;
 
+    struct VehicleInfo
+    {
+        int modelId;
+        bool isDriver;
+        float health;
+        Vector3 position;
+    };
+
     void RequireGameThread()
     {
         if (!host || !host->isGameThread())
@@ -157,6 +165,22 @@ PYBIND11_MODULE(sanandreas, module)
         .def("__repr__", [](const Vector3& self) {
             return py::str("Vector3({!r}, {!r}, {!r})").format(self.x, self.y, self.z);
         });
+    py::class_<VehicleInfo>(module, "VehicleInfo", "Immutable snapshot of the player's current vehicle; no game pointers")
+        .def_readonly("model_id", &VehicleInfo::modelId)
+        .def_readonly("is_driver", &VehicleInfo::isDriver)
+        .def_readonly("health", &VehicleInfo::health)
+        .def_readonly("position", &VehicleInfo::position);
+    module.def("_player_vehicle", []() -> py::object {
+        RequireGameThread();
+        SpaPlayerVehicle value{};
+        const int state = host->playerVehicle(&value);
+        if (state == 0) return py::none();
+        if (state != 1) throw std::runtime_error("no active player or vehicle seat/position unavailable; retry after entering or exiting");
+        if (value.modelId < 0 || !std::isfinite(value.health))
+            throw std::runtime_error("invalid vehicle snapshot");
+        return py::cast(VehicleInfo{value.modelId, value.isDriver != FALSE, value.health,
+            Vector3(value.x, value.y, value.z)});
+    });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {
         RequireGameThread();
