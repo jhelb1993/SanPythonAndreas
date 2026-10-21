@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.11.0-dev.1`.
-- Aktuelle interne Host-API: Version `11` (Fahrzeug-Momentaufnahme und Spielerzustände).
+- Aktuelle Paketversion: `0.12.0-dev.1`.
+- Aktuelle interne Host-API: Version `12` (Timer und Spielzeitabfrage).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 26 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 27 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `11` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `12` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -256,7 +256,7 @@ Prüfstand API 10: Release/x86-Build, 24 native Tests, 28 Python-Tests und
 Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt. Native Tests
 simulieren den Host, ohne die realen GTA-Funktionen auszuführen.
 
-## Fahrzeug-Momentaufnahme und Spielerzustände (API 11, Spielabnahme offen)
+## Fahrzeug-Momentaufnahme und Spielerzustände (API 11, vom Nutzer bestätigt)
 
 ABI ergänzt `SpaPlayerVehicle` (Modell-ID, Fahrerflag, Gesundheit, XYZ) und
 `playerVehicle(SpaPlayerVehicle*)`. Rückgabe -1: nicht verfügbar/inkonsistent,
@@ -281,4 +281,30 @@ Tests prüfen Fußzustand, Fahrer/Passagier, Modell-/Positionswechsel, unveränd
 Snapshots, Tod, fehlenden Spieler, Übergangsfehler, Threadprüfung und V-Beispiel.
 Reale Sitzzuordnung und Speicherzugriffe brauchen die Spielabnahme.
 Prüfstand API 11: Release/x86-Build, 26 native Tests, 30 Python-Tests und
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
+
+## Timer (API 12, Spielabnahme offen)
+
+ABI ergänzt `gameTimeMs()`, unsigned 32-Bit. Gepinnte Referenz `CTimer.cpp`:
+`m_snTimeInMilliseconds` bei 0xB7CB84. Der Wert ist auch im pausierten Tick auf
+dem Spielthread lesbar. Bindings exportieren `_game_time_ms` und
+`_require_game_thread` für die Python-Timerverwaltung. Keine Timer-Worker.
+
+Bootstrap entrollt die Spieluhr mit modulo-2^32-Differenzen; ein Delta größer
+als 2^31-1 wird als Rücksprung interpretiert. Dann werden alle Spielzeit-Timer
+abgebrochen. Echtzeit nutzt time.monotonic. Die Heuristik erkennt nicht jeden
+Save-Wechsel und kann sehr große Zeitsprünge als Reset interpretieren.
+
+Timer-Snapshot am Tick-Anfang; Zustellung nach on_frame nur bei ready.
+call_later(0) und während Dispatch angelegte Timer warten bis zum nächsten Tick.
+Maximal 64 Aufrufe je Frame; wiederholte Timer wandern ans Listenende und
+werden mit Abstand zum Callback-Ende neu geplant. Kein Catch-up. Jeder Aufruf
+prüft Abbruch erneut; Wiederholungen können sich selbst abbrechen. Abschluss,
+Abbruch und Fehler entfernen Callback-Referenzen. Fehler werden isoliert und
+langsame Timer ab 50 ms mit Modul und Callbacknamen protokolliert.
+
+main.py-Fehler verwerfen auch teilweise registrierte Timer. owner ist lediglich
+das Callback-Modul, keine vollständige Mod-Lebensdauerverwaltung. Generator-
+Tasks, Worker-Queue und asynchrones Modellstreaming sind weiterhin offen.
+Prüfstand API 12: Release/x86-Build, 27 native Tests, 40 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.

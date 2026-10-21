@@ -20,6 +20,39 @@ def on_key_down(key: str | int, /) -> Callable[[_Callback], _Callback]:
     ...
 
 
+class Timer:
+    """Cancellation handle returned by call_later/call_every."""
+    @property
+    def done(self) -> bool: ...
+    @property
+    def cancelled(self) -> bool: ...
+    @property
+    def owner(self) -> str:
+        """Callback module for diagnostics; not a complete mod lifecycle identity."""
+        ...
+    def cancel(self) -> None:
+        """Game thread only; safe to repeat. Releases the callback reference."""
+        ...
+
+
+def call_later(delay: float, callback: Callable[[], None], *, clock: str = "game") -> Timer:
+    """Call once after seconds. Zero waits until at least the next tick.
+
+    clock: 'game' follows GTA time; 'real' follows monotonic real time.
+    All callbacks wait for active gameplay and run on the game thread.
+    """
+    ...
+
+
+def call_every(interval: float, callback: Callable[[], None], *, clock: str = "game") -> Timer:
+    """Repeat after a positive interval from the previous callback's completion.
+
+    No catch-up burst. At most one call per timer per active frame; 64 total.
+    Callback errors stop that timer. Cancel via the returned handle.
+    """
+    ...
+
+
 class Vector3:
     """Immutable, finite coordinates. Changes through arithmetic return new values."""
     def __init__(self, x: float = 0, y: float = 0, z: float = 0) -> None: ...

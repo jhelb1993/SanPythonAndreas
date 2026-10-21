@@ -196,6 +196,11 @@ PYBIND11_MODULE(sanandreas, module)
         return host->hasFocus() != FALSE;
     });
     module.def("_player_health", &PlayerHealth);
+    module.def("_require_game_thread", &RequireGameThread);
+    module.def("_game_time_ms", [] {
+        RequireGameThread();
+        return host->gameTimeMs();
+    });
     module.def("_player_weapon", [] {
         RequireGameThread();
         int id = 0;

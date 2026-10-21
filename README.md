@@ -187,12 +187,13 @@ def heal():
 `main.py` läuft als `__main__`. Dein bisheriges `ctypes`-MessageBox-Beispiel kann
 weiterhin verwendet werden. Es hält den Spielthread bis zum Schließen an.
 
-Callbacks laufen auf dem Spielthread. Kein `time.sleep()`, keine Endlosschleifen
+Callbacks laufen auf dem Spielthread. Für Wartezeiten ab API 12 `call_later()`
+und `call_every()` verwenden. Kein `time.sleep()`, keine Endlosschleifen
 und keine langen Datei-/Netzwerkzugriffe. Python-Worker dürfen `show_text()` nicht
 direkt aufrufen. Fehlerhafte Callbacks werden protokolliert und deaktiviert;
 andere laufen weiter. Auch `SystemExit` wird abgefangen. Bei Fehlern beim Laden
 von `main.py` werden teilweise registrierte Callbacks verworfen. Nach Änderungen
-das Spiel neu starten; Hot Reload und Scheduler fehlen noch.
+das Spiel neu starten; Hot Reload und kooperative Coroutine-Tasks fehlen noch.
 
 ## GTA-Kompatibilität
 
@@ -494,7 +495,64 @@ import example_vehicle
 
 V zeigt Fuß-/Fahrzeugzustand, Sitzrolle, Modell-ID und Gesundheit im HUD;
 die Position steht zusätzlich im Python-Log. ASI und Datenordner gemeinsam aus
-`Release` aktualisieren. Spielabnahme offen: zu Fuß, als Fahrer und als Passagier
+`Release` aktualisieren. API-11-Funktion vom Nutzer im Spiel bestätigt. Zu Fuß, als Fahrer und als Passagier
 prüfen; aussteigen, anderes Fahrzeug betreten und erneut V drücken. Nach Pause,
 Alt-Tab, Tod und Spielstandwechsel kontrollieren. Gespeicherte Momentaufnahmen
 dürfen sich dabei nicht verändern.
+
+## Timer ohne blockierendes Warten (API 12)
+
+Paket `0.12.0-dev.1`, Host-API 12:
+
+```python
+timer = sa.call_later(3, lambda: sa.show_text("Drei Spielsekunden vorbei"))
+repeating = sa.call_every(1, lambda: print("Tick"))
+# repeating.cancel()  # mehrfaches Abbrechen ist erlaubt
+real_timer = sa.call_later(5, lambda: sa.show_text("Echtzeit vorbei"), clock="real")
+```
+
+Zeitangaben sind Sekunden. `call_later` erlaubt 0 (frühestens nächster Tick),
+`call_every` verlangt ein positives Intervall. Ungültige Typen, bool, negative
+Werte, NaN und Unendlich werden abgewiesen. Callback ohne Argumente übergeben;
+zusätzliche Werte lassen sich mit einer Closure binden.
+
+- `clock="game"` (Standard) folgt GTAs Spieltimer, einschließlich dessen
+  Pausen-/Zeitskalierungsverhalten. Es handelt sich nicht um die Tagesuhr.
+- `clock="real"` verwendet monotone Echtzeit, die während Pause und Laden
+  weiterläuft. Ein überfälliger Timer wird im nächsten aktiven Frame ausgeführt.
+- Alle Aufrufe laufen auf dem Spielthread nach Tastatur- und Framecallbacks.
+  Ohne aktiven Spieler bzw. während Pause werden keine Timer zugestellt.
+  Fokusverlust allein stoppt Timer nicht, sofern GTA weitersimuliert.
+- Wiederholungen werden ab Callback-Ende neu geplant. Verpasste Intervalle
+  werden nicht gesammelt nachgeholt; pro Timer höchstens ein Aufruf pro Frame.
+  Insgesamt maximal 64 Timeraufrufe pro Frame; übrige werden fair verschoben.
+- Registrierung und `cancel()` sind nur auf dem Spielthread erlaubt. Ein im
+  laufenden Frame registrierter Timer startet frühestens im nächsten Frame.
+
+`Timer.done` zeigt Abschluss, Abbruch oder Fehler an; `Timer.cancelled` zeigt
+ausdrücklichen Abbruch bzw. Uhrreset. `owner` enthält das Callback-Modul für
+Diagnose. Eine vollständige Mod-Verwaltung ist das noch nicht. Fertige und
+abgebrochene Timer geben ihre Callback-Referenz frei. Fehler einschließlich
+`SystemExit` stoppen nur den betroffenen Timer; Aufrufe ab 50 ms werden geloggt,
+aber nicht unterbrochen. Lange Arbeit darf weiterhin nicht im Callback laufen.
+
+Ein natürlicher 32-Bit-Uhrüberlauf wird verarbeitet. Bei erkanntem Rücksprung
+der Spieluhr werden Spielzeit-Timer abgebrochen; Echtzeit-Timer bleiben bestehen.
+Nicht jeder Spielstandwechsel ist damit erkennbar. Timer müssen für einen
+bestimmten Spielstand ihre Voraussetzungen im Callback erneut prüfen und bei
+Bedarf explizit abgebrochen werden. Timer werden nicht im Spielstand gespeichert.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_timers
+```
+
+- T: Countdown 3–2–1 in Spielzeit starten oder neu beginnen.
+- R: Nachricht nach fünf Echtzeit-Sekunden planen.
+- Y: beide abbrechen.
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+Countdown während Pause anhalten lassen, Echtzeit-Timer über eine Pause hinweg
+prüfen und mit Y vor Ablauf abbrechen. Wiederholt starten darf keine doppelten
+Timer hinterlassen. Kooperative Tasks und asynchrones Modellladen folgen separat.

@@ -15,9 +15,10 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset()
         sa._test_reset_weapons()
         sa._test_vehicle()
+        sa._test_game_time(1000)
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 11)
+        self.assertEqual(sa._host_api_version, 12)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -92,7 +93,8 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._set_player_money(100), sa._player_wanted_level,
                  lambda: sa._set_player_wanted_level(3), sa._player_weapon,
                  lambda: sa._give_player_weapon(22), lambda: sa._select_player_weapon(0),
-                 lambda: sa._remove_player_weapon(22), sa._clear_player_weapons, sa._player_vehicle]
+                 lambda: sa._remove_player_weapon(22), sa._clear_player_weapons, sa._player_vehicle,
+                 sa._game_time_ms, sa._require_game_thread]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -270,6 +272,13 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_ready(False)
         with self.assertRaises(RuntimeError):
             sa._player_vehicle()
+
+    def test_game_clock_is_unsigned_and_readable_while_paused(self):
+        for milliseconds in (0, 1000, 0xFFFFFFFF):
+            sa._test_game_time(milliseconds)
+            self.assertEqual(sa._game_time_ms(), milliseconds)
+        sa._test_ready(False)
+        self.assertEqual(sa._game_time_ms(), 0xFFFFFFFF)
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

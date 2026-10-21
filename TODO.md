@@ -86,7 +86,7 @@ API 7 ergänzt Rüstung; vom Nutzer im Spiel bestätigt.
 API 8 ergänzt Geld und Fahndungslevel; vom Nutzer im Spiel bestätigt.
 API 9 verwendet das spielerspezifische Gesundheitslimit; vom Nutzer im Spiel bestätigt.
 API 10 ergänzt Waffenverwaltung zu Fuß; vom Nutzer im Spiel bestätigt.
-API 11 ergänzt Spielerzustände und eine Fahrzeug-Momentaufnahme; Spielabnahme steht noch aus.
+API 11 ergänzt Spielerzustände und eine Fahrzeug-Momentaufnahme; vom Nutzer im Spiel bestätigt.
 
 - [x] Spielerposition lesen; F6-Beispiel zeigt Koordinaten an.
 - [x] Position setzen und Teleportieren im aktuellen Interior (vom Nutzer bestätigt).
@@ -97,20 +97,25 @@ API 11 ergänzt Spielerzustände und eine Fahrzeug-Momentaufnahme; Spielabnahme 
 - [x] Geld und Fahndungslevel lesen und verändern: API 8 vom Nutzer im Spiel bestätigt.
 - [x] Maximale Gesundheit mit den Spielerstatistiken abgleichen: API 9 vom Nutzer im Spiel bestätigt.
 - [x] Waffen geben, auswählen und entfernen: API 10 vom Nutzer im Spiel bestätigt (zu Fuß, IDs 1..18/22..38/41..43). Sonderausrüstung folgt separat.
-- [ ] Aktuelles Fahrzeug und Spielerzustände abfragen: API 11 implementiert (unveränderliche Fahrzeugdaten, is_alive/in_vehicle/is_driver), Spielabnahme offen. Dauerhafte Fahrzeug-Handles folgen in der Objektgrundlage.
+- [x] Aktuelles Fahrzeug und Spielerzustände abfragen: API 11 vom Nutzer im Spiel bestätigt (unveränderliche Fahrzeugdaten, is_alive/in_vehicle/is_driver). Dauerhafte Fahrzeug-Handles folgen in der Objektgrundlage.
 
 Abnahme: F5 heilt, F6 zeigt die Position, ein weiteres Beispiel teleportiert
 kontrolliert zwischen zwei bekannten Positionen.
 
 ## 5. Timer, Tasks und asynchrones Laden
 
-- [ ] Verzögerte und wiederholte Aufrufe anbieten.
+API 12 implementiert abbrechbare Einmal-/Wiederholungstimer mit Spiel-/Echtzeit,
+Fehlerisolierung, 64-Aufrufe-Limit pro Frame und Diagnose langsamer Timer.
+Spielabnahme offen. Generator-/Coroutine-Tasks, asynchrones Streaming und
+vollständige Mod-Zuordnung folgen separat.
+
+- [ ] Verzögerte und wiederholte Aufrufe anbieten: API 12 implementiert, Spielabnahme offen.
 - [ ] Kooperatives Warten ermöglichen, ohne den Spielthread zu blockieren.
-- [ ] Spielzeit und Echtzeit sowie Verhalten während Pause ausdrücklich festlegen.
+- [x] Spielzeit und Echtzeit sowie Verhalten während Pause für Timer ausdrücklich festlegen.
 - [ ] Tasks abbrechen und dem verursachenden Skript zuordnen können.
 - [ ] Modellanforderung mit Bereitschaftsprüfung, Timeout und Freigabe kapseln.
 - [ ] Hintergrundarbeit mit einer Queue für Rückgaben auf den Spielthread ermöglichen.
-- [ ] Task-Fehler isolieren und langsame Callbacks protokollieren.
+- [ ] Task-Fehler isolieren und langsame Callbacks protokollieren: für Timer ab API 12 implementiert; kooperative Tasks folgen.
 
 Abnahme: Ein Countdown und eine Modellanforderung laufen ohne Ruckeln durch
 blockierende Warteschleifen; Abbruch und Timeout funktionieren.

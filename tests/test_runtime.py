@@ -19,13 +19,19 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 11
+        self.api._host_api_version = 12
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
         self.keys = set()
         self.focus = True
         self.stats = [25.0, 100.0]
+        self.game_ms = 1000
+        self.real_seconds = 0.0
+        self.perf_seconds = 0.0
+        self.game_thread = True
+        self.api._game_time_ms = lambda: self.game_ms
+        self.api._require_game_thread = self.require_game_thread
         self.api._is_key_down = lambda key: key in self.keys
         self.api._has_focus = lambda: self.focus
         self.api._player_health = lambda: tuple(self.stats) if self.stats is not None else None
@@ -68,6 +74,8 @@ class RuntimeTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("_spa_runtime", self.root / "_spa_runtime.py")
         self.runtime = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.runtime)
+        self.runtime._real_now = lambda: self.real_seconds
+        self.runtime._perf_now = lambda: self.perf_seconds
         self.errors = []
         self.runtime._notify_error = self.errors.append
 
@@ -79,6 +87,10 @@ class RuntimeTests(unittest.TestCase):
         else:
             sys.modules["sanandreas"] = self.previous_api
         self.temp.cleanup()
+
+    def require_game_thread(self):
+        if not self.game_thread:
+            raise RuntimeError("requires game thread")
 
     def read_vehicle(self):
         if self.stats is None or self.vehicle_error:
@@ -348,7 +360,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 11
+        self.api._host_api_version = 12
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -601,6 +613,197 @@ raise RuntimeError('broken')
         press()
         self.assertEqual(len(self.output), count)
         self.assertNotIn("Disabled failing callback", self.log())
+
+    def test_timers_run_once_cancel_and_release_callbacks(self):
+        self.script("pass")
+        calls = []
+        timer = self.api.call_later(1, lambda: calls.append("once"))
+        cancelled = self.api.call_later(0, lambda: calls.append("cancelled"))
+        cancelled.cancel()
+        cancelled.cancel()
+        self.assertTrue(cancelled.cancelled)
+        self.assertTrue(cancelled.done)
+        self.assertIsNone(cancelled._callback)
+        self.runtime._tick(True)
+        self.game_ms += 999
+        self.runtime._tick(True)
+        self.assertEqual(calls, [])
+        self.game_ms += 1
+        self.runtime._tick(True)
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["once"])
+        self.assertTrue(timer.done)
+        self.assertFalse(timer.cancelled)
+        self.assertIsNone(timer._callback)
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_timer_clocks_have_explicit_pause_and_focus_behavior(self):
+        self.script("pass")
+        calls = []
+        self.api.call_later(1, lambda: calls.append("game"))
+        self.api.call_later(1, lambda: calls.append("real"), clock="real")
+        self.runtime._tick(True)
+        self.game_ms += 500
+        self.real_seconds = 0.5
+        self.runtime._tick(True)
+        self.real_seconds = 5
+        self.runtime._tick(False)
+        self.assertEqual(calls, [])
+        self.focus = False
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["real"])
+        self.game_ms += 500
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["real", "game"])
+
+    def test_repeating_timer_skips_missed_intervals_and_can_cancel_itself(self):
+        self.script("pass")
+        calls = []
+        def callback():
+            calls.append(self.game_ms)
+            if len(calls) == 2:
+                timer.cancel()
+        timer = self.api.call_every(1, callback)
+        self.runtime._tick(True)
+        self.game_ms += 10000
+        self.runtime._tick(True)
+        self.runtime._tick(True)
+        self.assertEqual(len(calls), 1)
+        self.game_ms += 1000
+        self.runtime._tick(True)
+        self.game_ms += 1000
+        self.runtime._tick(True)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(timer.cancelled)
+
+    def test_timer_zero_delay_and_registration_during_dispatch_wait_for_next_tick(self):
+        self.script("pass")
+        calls = []
+        def first():
+            calls.append("first")
+            self.api.call_later(0, lambda: calls.append("second"))
+        self.api.call_later(0, first)
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["first"])
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["first", "second"])
+        self.script("pass")
+
+    def test_timer_failures_are_isolated_and_slow_callbacks_logged(self):
+        self.script("pass")
+        calls = []
+        def bad():
+            raise SystemExit("timer must not exit GTA")
+        def slow():
+            self.perf_seconds += 0.06
+            calls.append("good")
+        failed = self.api.call_every(1, bad)
+        self.api.call_every(1, slow)
+        self.runtime._tick(True)
+        for _ in range(2):
+            self.game_ms += 1000
+            self.runtime._tick(True)
+        self.assertTrue(failed.done)
+        self.assertEqual(calls, ["good", "good"])
+        self.assertEqual(self.log().count("Disabled failing timer:"), 1)
+        self.assertIn("Slow timer callback", self.log())
+
+    def test_script_failure_cancels_partially_registered_timers(self):
+        self.script("import sanandreas as sa\nsa.call_later(0, lambda: sa.show_text('bad'))\nraise RuntimeError('broken')")
+        self.runtime._tick(True)
+        self.runtime._tick(True)
+        self.assertEqual(self.runtime._timers, {})
+        self.assertEqual(self.output, [])
+
+    def test_timers_handle_clock_wrap_and_cancel_game_timers_on_backward_reset(self):
+        self.script("pass")
+        calls = []
+        self.game_ms = 0xFFFFFFF0
+        self.api.call_later(0.032, lambda: calls.append("wrap"))
+        self.runtime._tick(True)
+        self.game_ms = 16
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["wrap"])
+        self.game_ms = 10000
+        self.runtime._tick(True)
+        timer = self.api.call_later(10, lambda: calls.append("old game"))
+        self.api.call_later(1, lambda: calls.append("real"), clock="real")
+        self.game_ms = 0
+        self.runtime._tick(True)
+        self.assertTrue(timer.cancelled)
+        self.real_seconds = 1
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["wrap", "real"])
+
+    def test_timer_validation_and_thread_guard(self):
+        for duration in (True, "1", None):
+            with self.assertRaises(TypeError):
+                self.api.call_later(duration, lambda: None)
+        for duration in (-1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self.api.call_later(duration, lambda: None)
+        with self.assertRaises(ValueError):
+            self.api.call_every(0, lambda: None)
+        with self.assertRaises(TypeError):
+            self.api.call_later(1, None)
+        with self.assertRaises(ValueError):
+            self.api.call_later(1, lambda: None, clock="wall")
+        with self.assertRaises(TypeError):
+            self.api.call_later(1, lambda: None, clock=None)
+        timer = self.api.call_later(1, lambda: None)
+        self.game_thread = False
+        for call in (lambda: self.api.call_later(1, lambda: None),
+                     lambda: self.api.call_every(1, lambda: None), timer.cancel):
+            with self.assertRaisesRegex(RuntimeError, "game thread"):
+                call()
+        self.assertFalse(timer.done)
+
+    def test_timer_dispatch_budget_defers_remaining_calls_fairly(self):
+        self.script("pass")
+        calls = []
+        for i in range(70):
+            self.api.call_later(0, lambda i=i: calls.append(i))
+        self.runtime._tick(True)
+        self.assertEqual(calls, list(range(64)))
+        self.runtime._tick(True)
+        self.assertEqual(calls, list(range(70)))
+        repeats = [self.api.call_every(0.001, lambda: None) for _ in range(64)]
+        self.api.call_later(0.001, lambda: calls.append("tail"))
+        self.game_ms += 1
+        self.runtime._tick(True)
+        self.assertNotIn("tail", calls)
+        self.game_ms += 1
+        self.runtime._tick(True)
+        self.assertIn("tail", calls)
+        for timer in repeats:
+            timer.cancel()
+
+    def test_timer_example_countdown_pause_restart_and_cancel(self):
+        self.script((RUNTIME / "scripts" / "example_timers.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        press("T")
+        self.assertEqual(self.output[-1], "Countdown: 3")
+        for expected in ("Countdown: 2", "Countdown: 1", "Countdown fertig!"):
+            self.game_ms += 1000
+            self.runtime._tick(True)
+            self.assertEqual(self.output[-1], expected)
+        self.assertEqual(self.runtime._timers, {})
+        press("R")
+        self.real_seconds += 10
+        self.runtime._tick(False)
+        self.runtime._tick(True)
+        self.assertEqual(self.output[-1], "Echtzeit-Timer fertig!")
+        press("T")
+        press("T")
+        self.assertEqual(len(self.runtime._timers), 1)
+        press("Y")
+        self.assertEqual(self.runtime._timers, {})
+        self.assertNotIn("Disabled failing", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):
         player = self.api.player()

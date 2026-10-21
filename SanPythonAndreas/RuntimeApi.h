@@ -42,5 +42,6 @@ struct SpaHostApi
     int (__cdecl* playerWeaponAction)(int, int, unsigned int, BOOL);
     // -1 unavailable player/invalid vehicle state; 0 on foot; 1 snapshot filled.
     int (__cdecl* playerVehicle)(SpaPlayerVehicle*);
+    DWORD (__cdecl* gameTimeMs)(); // CTimer game clock, modulo 2^32; readable while paused.
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

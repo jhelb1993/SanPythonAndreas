@@ -3,11 +3,13 @@ import pathlib
 import runpy
 import sys
 import traceback
+import math
+import time
 from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 11
+BOOTSTRAP_API_VERSION = 12
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -29,6 +31,142 @@ _keys_active = False
 _started = False
 _loaded = False
 _failed = False
+_timers = {}
+_next_timer_id = 0
+_game_last = None
+_game_elapsed = 0.0
+_real_now = time.monotonic
+_perf_now = time.perf_counter
+
+
+class Timer:
+    """Cancellation handle. Create with call_later/call_every on the game thread."""
+    __slots__ = ("_id", "_callback", "_clock", "_interval", "_due", "_done", "_cancelled", "_owner")
+
+    def __init__(self, token, callback, clock, interval, due):
+        self._id, self._callback = token, callback
+        self._clock, self._interval, self._due = clock, interval, due
+        self._done = self._cancelled = False
+        self._owner = getattr(callback, "__module__", "<unknown>")
+
+    @property
+    def done(self):
+        return self._done
+
+    @property
+    def cancelled(self):
+        return self._cancelled
+
+    @property
+    def owner(self):
+        """Callback module for diagnostics; per-mod lifecycle management follows later."""
+        return self._owner
+
+    def cancel(self):
+        sa._require_game_thread()
+        if not self._done:
+            self._cancelled = True
+            _finish_timer(self)
+
+
+def _finish_timer(timer):
+    _timers.pop(timer._id, None)
+    timer._done = True
+    timer._callback = None
+
+
+def _cancel_timers(clock=None):
+    for timer in tuple(_timers.values()):
+        if clock is None or timer._clock == clock:
+            timer._cancelled = True
+            _finish_timer(timer)
+
+
+def _sample_game_clock():
+    global _game_last, _game_elapsed
+    current = sa._game_time_ms()
+    if _game_last is not None:
+        delta = (current - _game_last) & 0xFFFFFFFF
+        if delta > 0x7FFFFFFF:
+            # Backward clock reset (e.g. new game). Natural uint32 wrap is small.
+            _cancel_timers("game")
+            _game_elapsed = 0.0
+            print("Game clock reset; cancelled game-time timers")
+        else:
+            _game_elapsed += delta / 1000.0
+    _game_last = current
+    return _game_elapsed
+
+
+def _clock_now(clock):
+    return _sample_game_clock() if clock == "game" else _real_now()
+
+
+def _schedule(delay, callback, clock, repeat):
+    global _next_timer_id
+    sa._require_game_thread()
+    if isinstance(delay, bool) or not isinstance(delay, (int, float)):
+        raise TypeError("timer duration must be a number, not bool")
+    delay = float(delay)
+    if not math.isfinite(delay) or delay < 0 or (repeat and delay == 0):
+        raise ValueError("timer duration must be finite and nonnegative (repeat interval > 0)")
+    if not callable(callback):
+        raise TypeError("timer callback must be callable")
+    if not isinstance(clock, str):
+        raise TypeError("clock must be 'game' or 'real'")
+    if clock not in ("game", "real"):
+        raise ValueError("clock must be 'game' or 'real'")
+    now = _clock_now(clock)
+    _next_timer_id += 1
+    timer = Timer(_next_timer_id, callback, clock, delay if repeat else None, now + delay)
+    _timers[timer._id] = timer
+    return timer
+
+
+def call_later(delay, callback, *, clock="game"):
+    """Call once after delay seconds; zero means no earlier than the next tick."""
+    return _schedule(delay, callback, clock, False)
+
+
+def call_every(interval, callback, *, clock="game"):
+    """Repeat with a delay after each call; missed intervals are never replayed."""
+    return _schedule(interval, callback, clock, True)
+
+
+def _run_timers(snapshot):
+    dispatched = 0
+    for timer in snapshot:
+        if dispatched >= 64:
+            break
+        if timer._done or _timers.get(timer._id) is not timer:
+            continue
+        now = _clock_now(timer._clock)
+        if timer._done or now < timer._due:
+            continue
+        dispatched += 1
+        callback = timer._callback
+        if timer._interval is None:
+            _finish_timer(timer)
+        started = _perf_now()
+        try:
+            callback()
+        except BaseException:
+            traceback.print_exc()
+            _finish_timer(timer)
+            print("Disabled failing timer:", timer.owner, getattr(callback, "__name__", repr(callback)))
+        else:
+            if not timer._done:
+                due = _clock_now(timer._clock) + timer._interval
+                # Round-robin for repeats when more than 64 timers are due.
+                if not timer._done:
+                    timer._due = due
+                    _timers.pop(timer._id, None)
+                    _timers[timer._id] = timer
+        finally:
+            elapsed = _perf_now() - started
+            if elapsed >= 0.05:
+                print(f"Slow timer callback ({elapsed * 1000:.1f} ms):", timer.owner,
+                      getattr(callback, "__name__", repr(callback)))
 
 
 def _register(callbacks, callback):
@@ -254,6 +392,9 @@ sa.on_key_down = on_key_down
 sa.Player = Player
 sa.WeaponType = WeaponType
 sa.player = player
+sa.Timer = Timer
+sa.call_later = call_later
+sa.call_every = call_every
 
 
 def _notify_error(details):
@@ -301,6 +442,8 @@ def _tick(ready):
     global _loaded, _started, _failed
     if _failed:
         return
+    _sample_game_clock()
+    timer_snapshot = tuple(_timers.values())
     if not ready:
         _poll_keys(False)
         return
@@ -317,6 +460,7 @@ def _tick(ready):
             _frame_callbacks.clear()
             _key_callbacks.clear()
             _key_was_down.clear()
+            _cancel_timers()
             print("main.py failed; restart the game after fixing the script")
             _notify_error(details)
             return
@@ -327,3 +471,4 @@ def _tick(ready):
         _ready_callbacks.clear()
     _poll_keys(True)
     _dispatch(_frame_callbacks)
+    _run_timers(timer_snapshot)
