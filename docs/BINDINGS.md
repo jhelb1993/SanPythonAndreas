@@ -571,6 +571,6 @@ Visible color coverage depends on model materials and paintjobs.
 `VehicleInfo` snapshots remain unchanged.
 
 The Infernus example and README bind F2 to advance both indices modulo 128.
-Game acceptance is pending.
+The user confirmed the vehicle colors in-game.
 Release/x86 build, 84 Python tests, 49 native binding tests and bundle
 verification passed.

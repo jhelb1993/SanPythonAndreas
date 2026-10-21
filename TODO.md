@@ -141,7 +141,7 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
 - [ ] Position, Heading und Geschwindigkeit lesen/setzten.
-- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 vom Nutzer im Spiel bestätigt; Primär-/Sekundärfarbe ab API 20 implementiert, Spielabnahme offen; weitere Steuerung folgt.
+- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 und Primär-/Sekundärfarbe ab API 20 vom Nutzer im Spiel bestätigt; weitere Steuerung folgt.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
 - [ ] Fahrzeugverlust und Zerstörung über Handles korrekt behandeln.
@@ -172,7 +172,7 @@ bestanden; Reparatur vom Nutzer im Spiel bestätigt.
 API 20 ergänzt `Vehicle.primary_color` und `secondary_color` mit Palettenindizes
 0..127. F2 im Infernus-Beispiel wechselt beide Farben durch.
 Release/x86-Build, 84 Python-Tests, 49 native Binding-Tests und Paketprüfung
-bestanden; Spielabnahme offen.
+bestanden; Fahrzeugfarben vom Nutzer im Spiel bestätigt.
 
 ## 7. Peds, Objekte und Welt
 
