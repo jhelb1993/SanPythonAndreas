@@ -27,5 +27,10 @@ struct SpaHostApi
     BOOL (__cdecl* setPlayerMoney)(int);
     BOOL (__cdecl* playerWantedLevel)(int*);
     BOOL (__cdecl* setPlayerWantedLevel)(int);
+    BOOL (__cdecl* playerWeapon)(int*, unsigned int*);
+    // Actions: 0 give, 1 select, 2 remove one, 3 clear all.
+    // Status: 0 success, 1 unavailable/dead, 2 restricted state, 3 not owned,
+    // 4 invalid arguments, 5 model loading failed.
+    int (__cdecl* playerWeaponAction)(int, int, unsigned int, BOOL);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

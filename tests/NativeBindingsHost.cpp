@@ -3,6 +3,8 @@
 #include "PythonIncludes.h"
 #include "Bindings.h"
 #include "BuildInfo.h"
+#include "WeaponPolicy.h"
+#include <array>
 #include <string>
 #include <cmath>
 
@@ -14,6 +16,60 @@ namespace
     float armour = 10;
     int money = 500, wantedLevel = 1, wantedMaximum = 6;
     bool wantedBlocked = false;
+    std::array<int, 13> weaponIds{};
+    std::array<unsigned int, 13> weaponAmmo{};
+    int activeSlot = 0, weaponStatus = 0;
+    int WeaponSlot(int id)
+    {
+        if (id <= 1) return 0;
+        if (id <= 9) return 1;
+        if (id <= 15) return 10;
+        if (id <= 18) return 8;
+        if (id <= 24) return 2;
+        if (id <= 27) return 3;
+        if (id <= 29 || id == 32) return 4;
+        if (id <= 31) return 5;
+        if (id <= 34) return 6;
+        if (id <= 38) return 7;
+        return 9;
+    }
+    BOOL __cdecl ReadWeapon(int* id, unsigned int* ammo)
+    {
+        if (!ready) return FALSE;
+        *id = weaponIds[activeSlot]; *ammo = weaponAmmo[activeSlot];
+        return TRUE;
+    }
+    int __cdecl WeaponAction(int action, int id, unsigned int ammo, BOOL equip)
+    {
+        if (!ready || health <= 0) return 1;
+        if (weaponStatus) return weaponStatus;
+        if (action == 3)
+        {
+            weaponIds.fill(0); weaponAmmo.fill(0); activeSlot = 0;
+            return 0;
+        }
+        const int slot = WeaponSlot(id);
+        if (action == 0)
+        {
+            if (weaponAmmo[slot] > spa::MaxWeaponAmmo || ammo > spa::MaxWeaponAmmo - weaponAmmo[slot]) return 4;
+            // GTA carries old ammunition across shotgun/SMG/rifle replacement.
+            const bool carry = weaponIds[slot] == id || slot == 3 || slot == 4 || slot == 5;
+            weaponAmmo[slot] = ammo + (carry ? weaponAmmo[slot] : 0);
+            weaponIds[slot] = id;
+            if (equip) activeSlot = slot;
+        }
+        else if (action == 1)
+        {
+            if (id != 0 && weaponIds[slot] != id) return 3;
+            activeSlot = slot;
+        }
+        else if (action == 2 && weaponIds[slot] == id && id != 0)
+        {
+            weaponIds[slot] = 0; weaponAmmo[slot] = 0;
+            if (activeSlot == slot) activeSlot = 0;
+        }
+        return 0;
+    }
     BOOL __cdecl ReadMoney(int* value)
     {
         if (!ready) return FALSE;
@@ -107,7 +163,7 @@ namespace
     }
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
-        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel};
+        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -121,6 +177,8 @@ void InstallTestControls(py::module_& module)
     module.def("_test_wanted_blocked", [](bool value) { wantedBlocked = value; });
     module.def("_test_thread", [](bool value) { onThread = value; });
     module.def("_test_max_health", [](float value) { maximum = value; });
+    module.def("_test_weapon_status", [](int value) { weaponStatus = value; });
+    module.def("_test_reset_weapons", [] { weaponIds.fill(0); weaponAmmo.fill(0); activeSlot = weaponStatus = 0; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

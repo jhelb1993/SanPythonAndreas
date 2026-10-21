@@ -395,7 +395,63 @@ F5 und `player.health = player.max_health` verwenden das aktuelle Spielerlimit.
 Kein neuer Import nötig. Auch die Prüfung beim Gesundheitsschreiben liest das
 Limit jedes Mal neu. Bloßes Lesen senkt überhöhte Gesundheit nicht ab.
 
-ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+API-9-Funktion vom Nutzer im Spiel bestätigt. Spieltest:
 mit normalem Spielstand und einem Spielstand mit erhöhter Maximalgesundheit
 Schaden nehmen, F5 drücken und die vollständige Heilung kontrollieren. Nach
 Spielstandwechsel erneut prüfen; fehlende und tote Spieler bleiben ausgeschlossen.
+
+## Waffenverwaltung (API 10)
+
+Paket `0.10.0-dev.1`, Host-API 10:
+
+```python
+player = sa.player()
+if player is not None and player.health > 0:
+    player.give_weapon(sa.WeaponType.PISTOL, 100)  # geben und auswählen
+    print(player.current_weapon, player.weapon_ammo)
+    player.select_weapon(sa.WeaponType.UNARMED)
+    player.select_weapon(sa.WeaponType.PISTOL)
+    player.remove_weapon(sa.WeaponType.PISTOL)
+    # player.clear_weapons()  # entfernt das gesamte Inventar, auch vorhandene Ausrüstung
+```
+
+Unterstützt sind Waffen-IDs 1..18, 22..38 und 41..43 als Integer oder
+`WeaponType`-Konstanten. IDs 19..21 sind Projektile; Satchel/Zünder (39/40),
+Sichtgeräte und Fallschirm (44..46) sind bei Einzelaktionen noch ausgeschlossen.
+`current_weapon` liefert die tatsächliche aktive ID, auch für Sonderausrüstung.
+`weapon_ammo` enthält die gesamte Munition inklusive Magazin; beide nur lesbar.
+
+Änderungen verlangen einen lebenden Spieler zu Fuß. Fahrzeug-/Jetpack-Zustände,
+gesicherte/versteckte Waffen und laufende Türübergänge werden abgewiesen.
+Modelle werden vor Geben/Auswählen synchron geladen und geprüft; das kann kurz
+stocken. Es werden keine dauerhaften Streaming-Flags hinzugefügt oder fremde
+Flags gelöscht. Fehlendes Modell führt vor der Inventaränderung zu `RuntimeError`.
+
+`give_weapon(weapon, ammo=100, equip=True)` addiert Munition bei gleicher Waffe;
+eine andere Waffe im gleichen Slot wird nach GTA-Regeln ersetzt, teilweise mit
+Munitionsübernahme. `equip=False` verzichtet auf ausdrückliche Auswahl, ersetzt
+aber weiterhin eine vorhandene Waffe im selben Slot. Das Beispiel stellt sie
+nicht wieder her. `ammo` muss eine ganze Zahl sein; Argument plus bisherige
+Slotmunition dürfen 99999 nicht überschreiten (sonst `ValueError`).
+
+`select_weapon` verlangt Besitz; ID 0 wählt den Faust-/Schlagring-Slot.
+`remove_weapon` entfernt nur bei genau passender ID, andernfalls passiert nichts;
+ID 0 ist ebenfalls ein No-op. `clear_weapons` entfernt ausdrücklich alle Waffen
+und Ausrüstung, unabhängig davon, ob sie durch Python vergeben wurden.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_weapons
+```
+
+- N: Pistole mit 100 zusätzlicher Munition geben und auswählen.
+- M: Faust-/Schlagring-Slot auswählen.
+- J: vorhandene Pistole auswählen.
+- K: Pistole entfernen.
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+zu Fuß N/M/J/K prüfen, schießen und Munitionsanzeige kontrollieren, N wiederholen;
+mit anderer Handfeuerwaffe den Slotwechsel prüfen. Im Fahrzeug muss die Aktion
+abgewiesen werden und nach Aussteigen wieder funktionieren. Auch Pause,
+Fokuswechsel, Tod und Spielstandwechsel prüfen.

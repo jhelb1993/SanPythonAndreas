@@ -1,6 +1,7 @@
 """Editor types for the built-in GTA module; not an executable implementation."""
 from collections.abc import Callable, Iterator
 from typing import TypeVar
+from enum import IntEnum
 
 __version__: str
 
@@ -41,6 +42,48 @@ class Vector3:
     def distance_to(self, other: Vector3) -> float: ...
 
 
+class WeaponType(IntEnum):
+    UNARMED = 0
+    BRASSKNUCKLE = 1
+    GOLFCLUB = 2
+    NIGHTSTICK = 3
+    KNIFE = 4
+    BASEBALLBAT = 5
+    SHOVEL = 6
+    POOLCUE = 7
+    KATANA = 8
+    CHAINSAW = 9
+    DILDO1 = 10
+    DILDO2 = 11
+    VIBE1 = 12
+    VIBE2 = 13
+    FLOWERS = 14
+    CANE = 15
+    GRENADE = 16
+    TEARGAS = 17
+    MOLOTOV = 18
+    PISTOL = 22
+    PISTOL_SILENCED = 23
+    DESERT_EAGLE = 24
+    SHOTGUN = 25
+    SAWNOFF = 26
+    SPAS12 = 27
+    MICRO_UZI = 28
+    MP5 = 29
+    AK47 = 30
+    M4 = 31
+    TEC9 = 32
+    COUNTRYRIFLE = 33
+    SNIPERRIFLE = 34
+    RLAUNCHER = 35
+    RLAUNCHER_HS = 36
+    FLAMETHROWER = 37
+    MINIGUN = 38
+    SPRAYCAN = 41
+    EXTINGUISHER = 42
+    CAMERA = 43
+
+
 class Player:
     """View of the current player. Every access rechecks game state and thread."""
     @property
@@ -68,6 +111,31 @@ class Player:
         ...
     @wanted_level.setter
     def wanted_level(self, value: int) -> None: ...
+    @property
+    def current_weapon(self) -> int:
+        """Active weapon ID, including equipment not listed in WeaponType."""
+        ...
+    @property
+    def weapon_ammo(self) -> int:
+        """Total ammo for the active weapon, including the clip."""
+        ...
+    def give_weapon(self, weapon: WeaponType | int, ammo: int = 100, *, equip: bool = True) -> None:
+        """On foot only. Synchronously loads models; may briefly pause the game.
+
+        Adds ammo or replaces the weapon in its slot using GTA's rules.
+        Ammo argument and existing slot ammo together must be <=99999.
+        Supports IDs 1..18, 22..38, 41..43. Equipment/satchel support is deferred.
+        """
+        ...
+    def select_weapon(self, weapon: WeaponType | int) -> None:
+        """On foot only; requires ownership. ID 0 selects the fists/knuckles slot."""
+        ...
+    def remove_weapon(self, weapon: WeaponType | int) -> None:
+        """On foot only; missing weapon or ID 0 is a no-op. Exact ID match."""
+        ...
+    def clear_weapons(self) -> None:
+        """On foot only; removes the entire inventory, including existing weapons/equipment."""
+        ...
     @property
     def max_health(self) -> float:
         """Read-only player-specific health limit, maintained by GTA."""

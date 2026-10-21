@@ -13,9 +13,10 @@ spec.loader.exec_module(sa)
 class NativeBindingsTests(unittest.TestCase):
     def setUp(self):
         sa._test_reset()
+        sa._test_reset_weapons()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 9)
+        self.assertEqual(sa._host_api_version, 10)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -88,7 +89,9 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._set_player_heading(90), sa._player_armour,
                  lambda: sa._set_player_armour(100), sa._player_money,
                  lambda: sa._set_player_money(100), sa._player_wanted_level,
-                 lambda: sa._set_player_wanted_level(3)]
+                 lambda: sa._set_player_wanted_level(3), sa._player_weapon,
+                 lambda: sa._give_player_weapon(22), lambda: sa._select_player_weapon(0),
+                 lambda: sa._remove_player_weapon(22), sa._clear_player_weapons]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -158,6 +161,80 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_wanted_blocked(True)
         sa._set_player_wanted_level(0)
         self.assertEqual(sa._player_wanted_level(), 2)
+
+    def test_weapons_give_select_remove_and_clear(self):
+        self.assertEqual(sa._player_weapon(), (0, 0))
+        sa._give_player_weapon(22, 100, equip=False)
+        self.assertEqual(sa._player_weapon(), (0, 0))
+        sa._select_player_weapon(22)
+        self.assertEqual(sa._player_weapon(), (22, 100))
+        sa._give_player_weapon(22, 50)
+        self.assertEqual(sa._player_weapon(), (22, 150))
+        sa._remove_player_weapon(24)  # Same slot, different weapon: must preserve pistol.
+        self.assertEqual(sa._player_weapon(), (22, 150))
+        sa._select_player_weapon(0)
+        sa._select_player_weapon(22)
+        sa._remove_player_weapon(22)
+        self.assertEqual(sa._player_weapon(), (0, 0))
+        sa._remove_player_weapon(22)  # Idempotent.
+        with self.assertRaisesRegex(RuntimeError, 'own'):
+            sa._select_player_weapon(22)
+        sa._give_player_weapon(22)
+        sa._give_player_weapon(31)
+        sa._clear_player_weapons()
+        self.assertEqual(sa._player_weapon(), (0, 0))
+        for weapon in (22, 31):
+            with self.assertRaises(RuntimeError):
+                sa._select_player_weapon(weapon)
+
+    def test_weapons_reject_invalid_ids_ammo_and_equip(self):
+        for value in (-1, 19, 20, 21, 39, 40, 44, 45, 46, 47, 999):
+            for call in (sa._give_player_weapon, sa._select_player_weapon, sa._remove_player_weapon):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    call(value)
+        for value in (True, 22.0, 'PISTOL', None):
+            for call in (sa._give_player_weapon, sa._select_player_weapon, sa._remove_player_weapon):
+                with self.assertRaises(TypeError):
+                    call(value)
+        with self.assertRaises(ValueError):
+            sa._give_player_weapon(0)
+        for ammo in (-1, 100000):
+            with self.assertRaises(ValueError):
+                sa._give_player_weapon(22, ammo)
+        for ammo in (True, 1.0, '100', None):
+            with self.assertRaises(TypeError):
+                sa._give_player_weapon(22, ammo)
+        for equip in (1, None, 'yes'):
+            with self.assertRaises(TypeError):
+                sa._give_player_weapon(22, equip=equip)
+        with self.assertRaises(OverflowError):
+            sa._give_player_weapon(22, 10**100)
+        self.assertEqual(sa._player_weapon(), (0, 0))
+
+    def test_weapons_ammo_limit_slot_replacement_and_host_failures(self):
+        sa._give_player_weapon(22, 99999)
+        with self.assertRaises(ValueError):
+            sa._give_player_weapon(22, 1)
+        self.assertEqual(sa._player_weapon(), (22, 99999))
+        sa._give_player_weapon(25, 10)
+        sa._give_player_weapon(27, 20)
+        self.assertEqual(sa._player_weapon(), (27, 30))
+        for status in (1, 2, 5):
+            sa._test_weapon_status(status)
+            with self.assertRaises(RuntimeError):
+                sa._give_player_weapon(31, 100)
+            self.assertEqual(sa._player_weapon(), (27, 30))
+        sa._test_weapon_status(2)
+        for call in (lambda: sa._select_player_weapon(0), lambda: sa._remove_player_weapon(27), sa._clear_player_weapons):
+            with self.assertRaises(RuntimeError):
+                call()
+        sa._test_weapon_status(0)
+        sa._test_dead()
+        with self.assertRaises(RuntimeError):
+            sa._give_player_weapon(22)
+        sa._test_ready(False)
+        with self.assertRaises(RuntimeError):
+            sa._player_weapon()
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

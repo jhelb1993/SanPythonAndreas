@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 9
+        self.api._host_api_version = 10
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -40,6 +40,14 @@ class RuntimeTests(unittest.TestCase):
         self.api._set_player_money = lambda value: self.set_player_value("money", value)
         self.api._player_wanted_level = lambda: self.read_player_value("wanted")
         self.api._set_player_wanted_level = lambda value: self.set_player_value("wanted", min(value, self.wanted_maximum))
+        self.weapons = {}
+        self.active_weapon = 0
+        self.weapon_restricted = False
+        self.api._player_weapon = self.read_weapon
+        self.api._give_player_weapon = self.give_weapon
+        self.api._select_player_weapon = self.select_weapon
+        self.api._remove_player_weapon = self.remove_weapon
+        self.api._clear_player_weapons = self.clear_weapons
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -68,6 +76,38 @@ class RuntimeTests(unittest.TestCase):
         else:
             sys.modules["sanandreas"] = self.previous_api
         self.temp.cleanup()
+
+    def read_weapon(self):
+        if self.stats is None:
+            raise RuntimeError("no active player")
+        return self.active_weapon, self.weapons.get(self.active_weapon, 0)
+
+    def require_weapon_change(self):
+        if self.stats is None or self.stats[0] <= 0 or self.weapon_restricted:
+            raise RuntimeError("weapon change unavailable")
+
+    def give_weapon(self, weapon, ammo=100, *, equip=True):
+        self.require_weapon_change()
+        self.weapons[weapon] = self.weapons.get(weapon, 0) + ammo
+        if equip:
+            self.active_weapon = weapon
+
+    def select_weapon(self, weapon):
+        self.require_weapon_change()
+        if weapon != 0 and weapon not in self.weapons:
+            raise RuntimeError("not owned")
+        self.active_weapon = weapon
+
+    def remove_weapon(self, weapon):
+        self.require_weapon_change()
+        self.weapons.pop(weapon, None)
+        if self.active_weapon == weapon:
+            self.active_weapon = 0
+
+    def clear_weapons(self):
+        self.require_weapon_change()
+        self.weapons.clear()
+        self.active_weapon = 0
 
     def read_player_value(self, name):
         if self.stats is None:
@@ -300,7 +340,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 9
+        self.api._host_api_version = 10
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -451,6 +491,53 @@ raise RuntimeError('broken')
             self.stats = stats
             for key in (0x79, 0x7A, 0x7B):
                 press(key)
+        self.assertEqual(len(self.output), count)
+        self.assertNotIn("Disabled failing callback", self.log())
+
+    def test_weapon_view_delegates_and_rechecks_player(self):
+        player = self.api.player()
+        player.give_weapon(self.api.WeaponType.PISTOL, 50, equip=False)
+        self.assertEqual(player.current_weapon, 0)
+        player.select_weapon(self.api.WeaponType.PISTOL)
+        self.assertEqual((player.current_weapon, player.weapon_ammo), (22, 50))
+        self.stats = None
+        for call in (lambda: player.current_weapon, lambda: player.weapon_ammo,
+                     lambda: player.give_weapon(22), lambda: player.select_weapon(0),
+                     lambda: player.remove_weapon(22), player.clear_weapons):
+            with self.assertRaises(RuntimeError):
+                call()
+        self.stats = [25, 100]
+        player.clear_weapons()
+        self.assertEqual(player.current_weapon, 0)
+        self.assertEqual(self.weapons, {})
+
+    def test_weapon_example_recovers_after_restricted_and_missing_weapon(self):
+        self.script((RUNTIME / "scripts" / "example_weapons.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        press("J")  # Not owned yet; handler stays registered.
+        self.weapon_restricted = True
+        press("N")
+        self.assertEqual(self.weapons, {})
+        self.weapon_restricted = False
+        press("N")
+        self.assertEqual(self.read_weapon(), (22, 100))
+        self.runtime._tick(True)  # Holding N must not add more ammo.
+        self.assertEqual(self.read_weapon(), (22, 100))
+        press("M")
+        self.assertEqual(self.active_weapon, 0)
+        press("J")
+        self.assertEqual(self.active_weapon, 22)
+        press("K")
+        self.assertEqual(self.read_weapon(), (0, 0))
+        count = len(self.output)
+        for stats in (None, [0, 100]):
+            self.stats = stats
+            press("N")
         self.assertEqual(len(self.output), count)
         self.assertNotIn("Disabled failing callback", self.log())
 

@@ -3,10 +3,11 @@ import pathlib
 import runpy
 import sys
 import traceback
+from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 9
+BOOTSTRAP_API_VERSION = 10
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -82,6 +83,48 @@ def on_key_down(key):
     return decorate
 
 
+class WeaponType(IntEnum):
+    UNARMED = 0
+    BRASSKNUCKLE = 1
+    GOLFCLUB = 2
+    NIGHTSTICK = 3
+    KNIFE = 4
+    BASEBALLBAT = 5
+    SHOVEL = 6
+    POOLCUE = 7
+    KATANA = 8
+    CHAINSAW = 9
+    DILDO1 = 10
+    DILDO2 = 11
+    VIBE1 = 12
+    VIBE2 = 13
+    FLOWERS = 14
+    CANE = 15
+    GRENADE = 16
+    TEARGAS = 17
+    MOLOTOV = 18
+    PISTOL = 22
+    PISTOL_SILENCED = 23
+    DESERT_EAGLE = 24
+    SHOTGUN = 25
+    SAWNOFF = 26
+    SPAS12 = 27
+    MICRO_UZI = 28
+    MP5 = 29
+    AK47 = 30
+    M4 = 31
+    TEC9 = 32
+    COUNTRYRIFLE = 33
+    SNIPERRIFLE = 34
+    RLAUNCHER = 35
+    RLAUNCHER_HS = 36
+    FLAMETHROWER = 37
+    MINIGUN = 38
+    SPRAYCAN = 41
+    EXTINGUISHER = 42
+    CAMERA = 43
+
+
 class Player:
     """A view of the current player, resolved again on every property access."""
     __slots__ = ()
@@ -100,6 +143,28 @@ class Player:
     @health.setter
     def health(self, value):
         sa._set_player_health(value)
+
+    @property
+    def current_weapon(self):
+        """Active weapon ID; may include equipment outside WeaponType."""
+        return sa._player_weapon()[0]
+
+    @property
+    def weapon_ammo(self):
+        """Total ammunition for the active weapon, including its clip."""
+        return sa._player_weapon()[1]
+
+    def give_weapon(self, weapon, ammo=100, *, equip=True):
+        sa._give_player_weapon(weapon, ammo, equip=equip)
+
+    def select_weapon(self, weapon):
+        sa._select_player_weapon(weapon)
+
+    def remove_weapon(self, weapon):
+        sa._remove_player_weapon(weapon)
+
+    def clear_weapons(self):
+        sa._clear_player_weapons()
 
     @property
     def money(self):
@@ -169,6 +234,7 @@ sa.on_game_ready = on_game_ready
 sa.on_frame = on_frame
 sa.on_key_down = on_key_down
 sa.Player = Player
+sa.WeaponType = WeaponType
 sa.player = player
 
 

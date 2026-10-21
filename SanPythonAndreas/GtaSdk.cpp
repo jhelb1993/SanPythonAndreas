@@ -10,6 +10,8 @@
 #include <CTimeCycle.h>
 #include <CPlayerInfo.h>
 #include <CWanted.h>
+#include <CWeaponInfo.h>
+#include "WeaponPolicy.h"
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -67,6 +69,35 @@ namespace
     {
         float health = 0, maximum = 0;
         return sdk::ReadPlayerHealth(&health, &maximum) && health > 0;
+    }
+
+    CWeaponInfo* WeaponInfo(int id) noexcept
+    {
+        auto* info = reinterpret_cast<decltype(&CWeaponInfo::GetWeaponInfo)>(0x743C60)(
+            static_cast<eWeaponType>(id), WEAPSKILL_STD);
+        return info && Accessible(info, sizeof(CWeaponInfo)) && info->m_nSlot < 13 ? info : nullptr;
+    }
+
+    bool LoadWeaponModels(const CWeaponInfo* info) noexcept
+    {
+        // Ordinary requests add no persistent mission/game/keep flags. Existing
+        // flags belonging to GTA or other mods are never cleared by this API.
+        const int models[]{info->m_nModelId1, info->m_nModelId2};
+        for (int model : models)
+        {
+            if (model <= 0) continue;
+            if (model >= 20000) return false;
+            auto* state = reinterpret_cast<CStreamingInfo*>(0x8E4CC0) + model;
+            if (!Accessible(state, sizeof(CStreamingInfo))) return false;
+        }
+        for (int model : models)
+            if (model > 0)
+                reinterpret_cast<decltype(&CStreaming::RequestModel)>(0x4087E0)(model, 0);
+        reinterpret_cast<decltype(&CStreaming::LoadAllRequestedModels)>(0x40EA10)(false);
+        for (int model : models)
+            if (model > 0 && (reinterpret_cast<CStreamingInfo*>(0x8E4CC0) + model)->m_nLoadState != LOADSTATE_LOADED)
+                return false;
+        return true;
     }
 
     int ControlledEntity(CPed* player, CPhysical*& entity) noexcept
@@ -181,6 +212,68 @@ bool sdk::WritePlayerWantedLevel(int value) noexcept
     using SetWanted = void (__thiscall*)(CWanted*, int);
     reinterpret_cast<SetWanted>(0x562470)(wanted, value);
     return true;
+}
+
+bool sdk::ReadPlayerWeapon(int* id, unsigned int* ammo) noexcept
+{
+    const auto* info = CurrentPlayerInfo();
+    if (!info || !Accessible(info->m_pPed, sizeof(CPed))) return false;
+    const CPed* player = info->m_pPed;
+    if (player->m_nActiveWeaponSlot >= 13) return false;
+    const CWeapon& weapon = player->m_aWeapons[player->m_nActiveWeaponSlot];
+    *id = static_cast<int>(weapon.m_eWeaponType);
+    *ammo = weapon.m_nTotalAmmo;
+    return true;
+}
+
+int sdk::PlayerWeaponAction(int action, int id, unsigned int ammo, bool equip) noexcept
+{
+    if (action < 0 || action > 3 || !spa::SupportedWeapon(id)
+        || (action == 0 && id == 0) || ammo > spa::MaxWeaponAmmo) return 4;
+    if (!LivingPlayer()) return 1;
+    auto* info = CurrentPlayerInfo();
+    if (!info || !Accessible(info->m_pPed, sizeof(CPed), true)) return 1;
+    CPed* player = info->m_pPed;
+    if (player->m_nPedFlags.bInVehicle || info->m_PlayerData.m_bInVehicleDontAllowWeaponChange
+        || static_cast<unsigned int>(player->m_nSavedWeapon) != 55u // WEAPON_UNIDENTIFIED
+        || reinterpret_cast<decltype(&CEntryExitManager::WeAreInInteriorTransition)>(0x43E400)()) return 2;
+    if (player->m_nActiveWeaponSlot >= 13) return 1;
+    if (action == 3)
+    {
+        using Clear = void (__thiscall*)(CPed*);
+        reinterpret_cast<Clear>(0x5E6320)(player);
+        return 0;
+    }
+    const CWeaponInfo* weaponInfo = WeaponInfo(id);
+    if (!weaponInfo) return 4;
+    const auto slot = weaponInfo->m_nSlot;
+    const bool owned = id == 0 || static_cast<int>(player->m_aWeapons[slot].m_eWeaponType) == id;
+    if (action == 2)
+    {
+        if (id == 0 || !owned) return 0; // Idempotent; never clear a different weapon in this slot.
+        using Remove = void (__thiscall*)(CPed*, eWeaponType);
+        reinterpret_cast<Remove>(0x5E62B0)(player, static_cast<eWeaponType>(id));
+        return 0;
+    }
+    if (action == 1 && !owned) return 3;
+    if (id != 0 && !LoadWeaponModels(weaponInfo)) return 5;
+    // Loading is synchronous; resolve player again before mutating inventory.
+    if (!LivingPlayer() || FindCurrentPlayer() != player) return 1;
+    if (action == 0)
+    {
+        // Cap the addition as well as the Python argument, preventing overflow
+        // when GTA carries ammunition over from a replaced weapon in this slot.
+        const unsigned int existing = player->m_aWeapons[slot].m_nTotalAmmo;
+        if (existing > spa::MaxWeaponAmmo || ammo > spa::MaxWeaponAmmo - existing) return 4;
+        using Give = int (__thiscall*)(CPed*, eWeaponType, unsigned int, bool);
+        reinterpret_cast<Give>(0x5E6080)(player, static_cast<eWeaponType>(id), ammo, true);
+    }
+    if (action == 1 || equip)
+    {
+        using Select = void (__thiscall*)(CPed*, eWeaponType);
+        reinterpret_cast<Select>(0x5E6280)(player, static_cast<eWeaponType>(id));
+    }
+    return 0;
 }
 
 bool sdk::ReadPlayerPosition(float* x, float* y, float* z) noexcept

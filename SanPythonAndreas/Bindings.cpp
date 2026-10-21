@@ -3,6 +3,7 @@
 #include "Bindings.h"
 #include "BuildInfo.h"
 #include "Vector3.h"
+#include "WeaponPolicy.h"
 #include <pybind11/operators.h>
 #include <cmath>
 #include <stdexcept>
@@ -91,6 +92,27 @@ namespace
             throw py::value_error(std::string(name) + " must be between 0 and " + std::to_string(maximum));
         return static_cast<int>(number);
     }
+
+    int WeaponId(py::handle value)
+    {
+        const int id = BoundedInteger(value, 46, "weapon");
+        if (!spa::SupportedWeapon(id))
+            throw py::value_error("unsupported weapon ID; supported: 0..18, 22..38, 41..43");
+        return id;
+    }
+
+    void WeaponAction(int action, int id, unsigned int ammo = 0, bool equip = false)
+    {
+        switch (host->playerWeaponAction(action, id, ammo, equip ? TRUE : FALSE))
+        {
+        case 0: return;
+        case 2: throw std::runtime_error("weapon changes require being on foot, outside vehicle/jetpack/cutscene/door transitions");
+        case 3: throw std::runtime_error("player does not own this weapon");
+        case 4: throw py::value_error("invalid weapon or ammo; slot total must not exceed 99999");
+        case 5: throw std::runtime_error("weapon models could not be loaded; inventory unchanged");
+        default: throw std::runtime_error("no active living player or weapons unavailable");
+        }
+    }
 }
 
 void bindings::SetHost(const SpaHostApi* api) noexcept
@@ -150,6 +172,33 @@ PYBIND11_MODULE(sanandreas, module)
         return host->hasFocus() != FALSE;
     });
     module.def("_player_health", &PlayerHealth);
+    module.def("_player_weapon", [] {
+        RequireGameThread();
+        int id = 0;
+        unsigned int ammo = 0;
+        if (!host->playerWeapon(&id, &ammo)) throw std::runtime_error("no active player or weapons unavailable");
+        return py::make_tuple(id, ammo);
+    });
+    module.def("_give_player_weapon", [](py::handle weapon, py::handle ammo, py::handle equip) {
+        RequireGameThread();
+        const int id = WeaponId(weapon);
+        if (id == 0) throw py::value_error("cannot give UNARMED; use select_weapon(0)");
+        const int count = BoundedInteger(ammo, spa::MaxWeaponAmmo, "ammo");
+        if (!py::isinstance<py::bool_>(equip)) throw py::type_error("equip must be bool");
+        WeaponAction(0, id, count, py::cast<bool>(equip));
+    }, py::arg("weapon"), py::arg("ammo") = 100, py::kw_only(), py::arg("equip") = true);
+    module.def("_select_player_weapon", [](py::handle weapon) {
+        RequireGameThread();
+        WeaponAction(1, WeaponId(weapon));
+    }, py::arg("weapon"));
+    module.def("_remove_player_weapon", [](py::handle weapon) {
+        RequireGameThread();
+        WeaponAction(2, WeaponId(weapon));
+    }, py::arg("weapon"));
+    module.def("_clear_player_weapons", [] {
+        RequireGameThread();
+        WeaponAction(3, 0);
+    });
     module.def("_player_money", [] {
         RequireGameThread();
         int value = 0;

@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.9.0-dev.1`.
-- Aktuelle interne Host-API: Version `9` (spielerspezifisches Gesundheitslimit).
+- Aktuelle Paketversion: `0.10.0-dev.1`.
+- Aktuelle interne Host-API: Version `10` (Waffenverwaltung).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 21 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 24 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `9` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `10` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -200,7 +200,7 @@ GTA-Adressen brauchen die Spielabnahme. Beispiel: `example_money_wanted.py`.
 Prüfstand API 8: Release/x86-Build, 20 native Tests, 25 Python-Tests und
 Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
 
-## Maximale Spielergesundheit (API 9, Spielabnahme offen)
+## Maximale Spielergesundheit (API 9, vom Nutzer bestätigt)
 
 Unveränderte ABI-Struktur; `playerHealth` liefert als Maximum nun
 `CPlayerInfo::m_nMaxHealth`. `CurrentPlayerInfo()` prüft aktiven Spieler,
@@ -219,4 +219,40 @@ verändert keine überhöhte Gesundheit. Tests simulieren steigende/fallende Lim
 und F5-Heilen nach Änderungen; die tatsächlichen CPlayerInfo-Werte und
 Gesundheitsboni brauchen den Spieltest mit unterschiedlichen Spielständen.
 Prüfstand API 9: Release/x86-Build, 21 native Tests, 26 Python-Tests und
-Paketprüfung bestanden. Spielabnahme offen.
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
+
+## Waffenverwaltung (API 10, Spielabnahme offen)
+
+ABI um `playerWeapon(int*, unsigned int*)` und `playerWeaponAction` erweitert.
+Aktionen 0/1/2/3 entsprechen Geben/Auswählen/Einzeln entfernen/Alles entfernen.
+Statuscodes: 0 Erfolg, 1 Spieler nicht verfügbar/tot, 2 gesperrter Zustand,
+3 nicht im Besitz, 4 ungültiges Argument oder Munitionslimit, 5 Modellladefehler.
+`WeaponPolicy.h` definiert die freigegebenen IDs und das Munitionslimit.
+
+Adressen aus gepinntem SDK: `CWeaponInfo.cpp` (GetWeaponInfo 0x743C60),
+`CPed.cpp` (GiveWeapon 0x5E6080, SetCurrentWeapon 0x5E6280,
+ClearWeapon 0x5E62B0, ClearWeapons 0x5E6320), `CStreaming.cpp`
+(RequestModel 0x4087E0, LoadAllRequestedModels 0x40EA10,
+ms_aInfoForModel 0x8E4CC0). Keine zusätzlichen SDK-.cpp-Dateien werden gelinkt.
+
+Modelle aus beiden WeaponInfo-Feldern werden mit Streamingflags 0 angefordert,
+synchron geladen und auf LOADSTATE_LOADED geprüft. Fremde Persistenzflags werden
+nicht gelöscht. Nach dem Laden wird der aktuelle lebende Spieler erneut geprüft.
+Inventaraktionen folgen den GTA-Funktionen inklusive Slotersetzung und
+Munitionsübernahme. Das Entfernen prüft vor dem Aufruf die genaue ID im Slot.
+
+Mutationen werden in Fahrzeug-/Jetpack-Zuständen, bei gesetztem SavedWeapon und
+während Türübergängen abgewiesen. SavedWeapon-Sentinel 55 ist im alten SDK-Enum
+nicht benannt; Referenz: [gta-reversed eWeaponType](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Enums/eWeaponType.h).
+Semantik-/Signaturvergleich (GiveWeapon liefert einen Slot):
+[gta-reversed Ped](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Entity/Ped/Ped.cpp).
+
+Python bietet `WeaponType` als IntEnum, vier Inventarmethoden sowie die lesbaren
+Eigenschaften `current_weapon` und `weapon_ammo`. Sonderausrüstung 39/40/44..46
+bleibt bei Einzelaktionen ausgeschlossen. `clear_weapons` entfernt das gesamte
+Inventar inklusive Sonderausrüstung und vorher vorhandener Waffen.
+
+Prüfstand API 10: Release/x86-Build, 24 native Tests, 28 Python-Tests und
+Paketprüfung bestanden. Modellstreaming, Handmodelle, Schießen, Slotwechsel und
+Fahrzeugablehnung brauchen die Spielabnahme. Native Tests simulieren den Host,
+ohne die realen GTA-Funktionen auszuführen.
