@@ -291,5 +291,29 @@ nur den Heading-Winkel, keine vollständige Neigung eines Fahrzeugs.
 Das aktualisierte `example_teleport` speichert mit F7 auch Heading und stellt es
 mit F8 nach dem Teleport wieder her. Bestehendes `import example_teleport` reicht.
 Paketversion `0.5.0-dev.1`, Host-API 5: ASI und Datenordner gemeinsam aktualisieren.
-20 Python-Tests bestehen. Windows-Build mit 14 nativen Tests und Spielabnahme
-stehen noch aus. API-4-Teleportieren wurde vom Nutzer als funktionierend bestätigt.
+API 5: Windows-Build, 14 native Tests, Paketprüfung und Heading-Spieltest wurden
+vom Nutzer als erfolgreich bestätigt. API-4-Teleportieren ist ebenfalls bestätigt.
+
+## Innen- und Außenräume wechseln (API 6)
+
+Paket `0.6.0-dev.1`, Host-API 6: `player.teleport(target, interior=6)` wechselt
+jetzt den Weltbereich. `interior=0` führt nach draußen; `None` und die Zuweisung
+an `player.position` behalten den aktuellen Bereich bei. Die ID muss zur
+Zielposition passen; eine Interior-ID allein bezeichnet kein bestimmtes Gebäude.
+
+F7 speichert weiterhin Position, Interior und Heading. F8 stellt diese Werte
+jetzt auch nach einem Wechsel nach drinnen oder draußen wieder her. Keine neue
+Importzeile nötig, wenn das Beispiel bereits geladen wird.
+
+Spieler, Fahrerfahrzeug und dessen Insassen erhalten den Zielbereich. Die alte
+Umgebung wird entladen, Zielszene und Kollision werden synchron geladen; bei
+Bereichswechsel werden Kamera, Extra-Farbfilter und alter Portal-Kontext
+zurückgesetzt. Während eines laufenden Türübergangs wird der Aufruf abgewiesen;
+F8 bleibt danach nutzbar. Shop- und Missionsskripte werden nicht aktiviert,
+eine zum Zielgebäude passende Portal-/Radar-Zuordnung wird nicht rekonstruiert.
+Keine Bodensuche oder Hindernisprüfung; Fahrzeugziele brauchen genügend Platz.
+
+ASI und kompletten Datenordner gemeinsam aktualisieren. Spielabnahme offen:
+draußen F7, Gebäude betreten, nach abgeschlossenem Türübergang F8; danach
+drinnen F7, Gebäude verlassen und F8. Auch Interior A nach B sowie anschließendes
+normales Verlassen durch die Tür, Kamera, sichtbare Umgebung und Kollision prüfen.

@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.5.0-dev.1`.
-- Aktuelle interne Host-API: Version `3` (zusätzliche Positionsabfrage).
+- Aktuelle Paketversion: `0.6.0-dev.1`.
+- Aktuelle interne Host-API: Version `6` (Interior-Wechsel beim Teleportieren).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 14 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 15 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `5` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `6` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -111,7 +111,7 @@ müssen unter Windows noch ausgeführt werden; virtuelle GTA-Aufrufe und Streami
 lassen sich damit nicht prüfen. Spielabnahme zu Fuß/Fahrer/Passagier/Interior offen.
 
 
-## Heading (API 5, Spielabnahme offen)
+## Heading (API 5, vom Nutzer bestätigt)
 
 ABI um `playerHeading(float*)` und `setPlayerHeading(float)` erweitert.
 Die Python-API verwendet normalisierte Grad; die native Spielfunktion Radians.
@@ -123,7 +123,33 @@ werden gemeinsam mit dem Teleport über `ControlledEntity` aufgelöst.
 
 20 Python-Tests bestehen. Zwei zusätzliche native Tests prüfen Winkel-Normalisierung,
 Typfehler, nicht endliche Winkel, Spielzustand und abgewiesene Fahrzeugfälle.
-Die 14 Windows-Tests und der Spieltest dieser Erweiterung sind noch offen.
+Die 14 Windows-Tests, der Build, die Paketprüfung und der Spieltest dieser
+Erweiterung wurden inzwischen vom Nutzer als erfolgreich bestätigt.
 Abnahme: F7 zu Fuß speichern, drehen/weggehen, F8 und Ausrichtung kontrollieren;
 dasselbe als Fahrer wiederholen. Passagier-Speichern muss abgewiesen werden,
 ohne F7/F8 zu deaktivieren. Neigung/Rollen werden nicht gespeichert.
+
+## Interior-Teleport (API 6, Spielabnahme offen)
+
+Gleiche ABI-Struktur, neue Semantik: `interior` wählt nun den Zielbereich;
+Status 2 bedeutet laufender Türübergang. API-Version erhöht, damit alte Hosts
+nicht versehentlich die frühere Ablehnungssemantik verwenden.
+
+Referenzen im gepinnten SDK: `CGame.cpp` (currArea 0xB72914),
+`CStreaming.cpp` (RemoveBuildingsNotInArea 0x4094B0),
+`CEntryExitManager.cpp` (WeAreInInteriorTransition 0x43E400;
+Stackposition 0x96A7C4), `CCamera.cpp` (TheCamera 0xB6F028;
+RestoreWithJumpCut 0x50BAB0), `CTimeCycle.cpp` (StopExtraColour 0x55FF20).
+SDK-Dateien werden weiterhin nicht zusätzlich gelinkt.
+
+Vor Änderungen werden Ziel, Spieler, Fahrzeug und Insassen geprüft. Bereich
+und Entity-Area-Codes werden vor dem Streaming gesetzt; beim Bereichswechsel
+werden alter Portal-Kontext, Farbfilter und Kamera zurückgesetzt. Der generische
+Koordinatenteleport aktiviert keine Shop-/Missionsskripte und rekonstruiert keine
+gebäudespezifische Portal-/Radar-Zuordnung. Normale Türübergänge nach dem Teleport
+brauchen deshalb einen ausdrücklichen Spieltest.
+
+Quervergleich: [gta-reversed EntryExit](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/EntryExit.cpp)
+und [EntryExitManager](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/EntryExitManager.cpp).
+Automatisierte Tests simulieren Bereichswechsel und Übergangsablehnung;
+Streaming, Kamera und Kollisionsverhalten müssen im Spiel geprüft werden.

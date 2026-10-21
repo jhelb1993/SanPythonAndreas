@@ -314,6 +314,25 @@ raise RuntimeError('broken')
         self.assertEqual(self.heading, 45.0)
         self.assertNotIn("Disabled failing callback", self.log())
 
+    def test_saved_interior_is_restored_from_outside_and_other_interiors(self):
+        self.interior = 6
+        self.script((RUNTIME / "scripts" / "example_teleport.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        self.keys.add(0x76)
+        self.runtime._tick(True)
+        for source_area in (0, 1):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.interior = source_area
+            self.position = (100, 200, 300)
+            self.heading = 180
+            self.keys.add(0x77)
+            self.runtime._tick(True)
+            self.assertEqual(self.interior, 6)
+            self.assertEqual(self.position, (12.5, -34, 8))
+            self.assertEqual(self.heading, 45)
+        self.assertNotIn("Disabled failing callback", self.log())
+
     def test_heading_property_delegates_and_rechecks_current_value(self):
         player = self.api.player()
         self.assertEqual(player.heading, 45)

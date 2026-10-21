@@ -51,7 +51,7 @@ class Player:
     def max_health(self) -> float: ...
     @property
     def position(self) -> Vector3:
-        """Detached snapshot. Assign a Vector3 to teleport within the current interior."""
+        """Detached snapshot. Assignment keeps the current interior; teleport can change it."""
         ...
 
     @position.setter
