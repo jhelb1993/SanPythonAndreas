@@ -608,8 +608,8 @@ geloggt. Task-Schritte teilen sich das 64-Aufrufe-Budget mit normalen Timern.
 Bei erkanntem Spieluhr-Rücksprung werden Tasks abgebrochen, die gerade auf
 Spielzeit warten. Auf Echtzeit wartende Tasks bleiben bestehen. Das ist keine
 vollständige Spielstand-Erkennung; Voraussetzungen vor Spielzugriff erneut prüfen.
-Hot Reload, Mod-Unload und Worker-Queue folgen separat. Asynchrones Modellladen
-ergänzt API 14.
+Hot Reload und Mod-Unload folgen separat. Asynchrones Modellladen ergänzt API 14,
+Hintergrundjobs mit Ergebnisqueue ergänzt API 15.
 
 Für das Beispiel in der eigenen `main.py` ergänzen:
 
@@ -679,6 +679,73 @@ import example_models
 
 U lädt das Infernus-Modell 411, hält es drei Spielsekunden und gibt es frei;
 I bricht ab. Es wird noch kein Fahrzeug erzeugt. ASI und Datenordner gemeinsam
-aus `Release` aktualisieren. Spielabnahme offen: U, Bereitschaft und Freigabe im
+aus `Release` aktualisieren. API-14-Funktion vom Nutzer im Spiel bestätigt. U, Bereitschaft und Freigabe im
 HUD/Log prüfen, dabei bewegen und Pause/Fortsetzen testen; erneut U und mit I
 abbrechen. Laden darf den Spielthread nicht durch synchrones Warten anhalten.
+
+## Hintergrundarbeit und Ergebnisse auf dem Spielthread (API 15)
+
+Paket `0.15.0-dev.1`, Host-API 15:
+
+```python
+from pathlib import Path
+
+def read_config():
+    # Worker: Daten lesen/berechnen, keine Spielzugriffe.
+    return Path("meine_config.txt").read_text(encoding="utf-8")
+
+def apply_config(text):
+    # Wieder auf dem Spielthread; hier sind GTA-Aufrufe möglich.
+    print("Konfiguration geladen:", len(text), "Zeichen")
+    sa.show_text("Konfiguration geladen")
+
+job = sa.run_in_background(read_config, apply_config,
+                           on_error=lambda details: print(details))
+# job.cancel()  # Ergebniszustellung abbrechen
+```
+
+Der Aufruf erfolgt auf dem Spielthread. `work` ist eine normale Funktion ohne
+Argumente und liefert Daten zurück; zusätzliche Eingaben lassen sich per Closure
+binden. Generatoren und async/await-Coroutinen sind dafür nicht geeignet.
+Zwei bei Bedarf gestartete Threads bearbeiten maximal 32 wartende Aufträge.
+Insgesamt maximal 64 noch nicht zugestellte Jobs; volle Queues melden RuntimeError.
+Dies eignet sich für Datei-/Netzwerk-I/O und native Funktionen, die den GIL
+freigeben. Reine Python-Rechenarbeit teilt sich weiterhin den GIL mit dem Spiel.
+
+`on_done(result)` und optional `on_error(details)` laufen nur bei aktivem Spiel
+auf dem Spielthread, nach Framecallbacks und vor Timern. Bei Pause bleiben
+Ergebnisse in der Queue. Maximal 32 Ergebnisse werden pro Frame verarbeitet;
+neu in einem Frame angelegte Jobs liefern frühestens im nächsten Tick zurück.
+Ohne Callback ist das Ergebnis nach Zustellung über `job.result` lesbar.
+
+`done` bedeutet zugestellt, fehlgeschlagen oder abgebrochen; fertig gerechnete,
+aber noch nicht zugestellte Jobs bleiben zunächst offen. `cancelled`, `owner`,
+`result` und `error` sind lesbar. Fehler werden als Text mit Traceback protokolliert;
+es werden keine Exception-/Traceback-Objekte im Handle gespeichert. Ein fehlerhafter
+Worker oder Ergebnis-Callback stoppt andere Jobs nicht. Ergebnis-Callbacks ab
+50 ms werden geloggt und müssen kurz bleiben.
+
+`cancel()` ist wiederholbar und nur auf dem Spielthread erlaubt. Noch nicht
+begonnene Arbeit wird übersprungen, spätere Ergebnisse werden verworfen. Bereits
+laufender Code wird nicht unterbrochen und seine Datei-/Netzwerkaktionen werden
+nicht rückgängig gemacht. Eigene I/O-Aufrufe brauchen daher passende Timeouts.
+Abgebrochene Queueeinträge belegen bis zur Entnahme weiterhin ihren Platz.
+Workers bleiben bis zum Prozessende erhalten; das Spiel wartet nicht auf ihre
+Fertigstellung. Spielzugriffe und Eventregistrierungen aus Workern werden abgewiesen.
+
+Erkannte Spieluhr-Resets und ein Ladefehler von main.py brechen alle offenen Jobs
+einschließlich Ergebniszustellung ab. Eine vollständige Spielstand- oder Mod-
+Lebensdauererkennung ist das weiterhin nicht.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_background
+```
+
+O liest die Beispieldatei im Hintergrund; nach einer absichtlichen Wartezeit von
+zwei Sekunden im Worker zeigt der Spielthread Zeilen-/Zeichenzahl im HUD an.
+P bricht die Ergebniszustellung ab. ASI und Datenordner gemeinsam aus `Release`
+aktualisieren. Spielabnahme offen: O drücken und weiterlaufen/fahren, Pause bis
+nach Ende der Arbeit halten und beim Fortsetzen die Meldung prüfen. O und direkt
+P darf keine spätere Ergebnismeldung liefern.

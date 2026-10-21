@@ -7,12 +7,14 @@ import math
 import time
 import inspect
 import types
+import queue
+import threading
 from typing import NamedTuple
 from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 14
+BOOTSTRAP_API_VERSION = 15
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -41,6 +43,12 @@ _claimed_generators = set()
 _next_task_id = 0
 _cancelling = False
 _models = {}
+_background_jobs = {}
+_next_background_id = 0
+_work_queue = queue.Queue(maxsize=32)
+_completed_work = queue.SimpleQueue()
+_workers = []
+_background_lock = threading.Lock()
 _game_last = None
 _game_elapsed = 0.0
 _real_now = time.monotonic
@@ -99,6 +107,15 @@ def _cancel_timers(clock=None):
         # Invalidate them on any detected game-clock reset, including real-time tasks.
         for model in tuple(_models.values()):
             model.release()
+        for job in tuple(_background_jobs.values()):
+            job.cancel()
+        # Canceled workers cannot commit any more envelopes after this drain.
+        with _background_lock:
+            while True:
+                try:
+                    _completed_work.get_nowait()
+                except queue.Empty:
+                    break
     finally:
         _cancelling = previous
 
@@ -372,6 +389,153 @@ def load_model(model_id, *, timeout=10):
             model.release()
 
 
+class BackgroundJob:
+    """Worker result handle. Cancellation suppresses delivery; running work may continue."""
+    __slots__ = ("_id", "_work", "_on_done", "_on_error", "_owner", "_done",
+                 "_cancelled", "_result", "_error")
+
+    def __init__(self, token, work, on_done, on_error):
+        self._id, self._work = token, work
+        self._on_done, self._on_error = on_done, on_error
+        self._owner = getattr(work, "__module__", "<unknown>")
+        self._done = self._cancelled = False
+        self._result = self._error = None
+
+    @property
+    def done(self):
+        """Completed/delivered, failed or cancelled (not merely finished in the worker)."""
+        return self._done
+
+    @property
+    def cancelled(self):
+        return self._cancelled
+
+    @property
+    def owner(self):
+        return self._owner
+
+    @property
+    def result(self):
+        return self._result
+
+    @property
+    def error(self):
+        """Formatted error text; no exception/traceback objects retained."""
+        return self._error
+
+    def cancel(self):
+        sa._require_game_thread()
+        with _background_lock:
+            if self._done:
+                return
+            self._done = self._cancelled = True
+        self._work = self._on_done = self._on_error = None
+        _background_jobs.pop(self._id, None)
+
+
+def _execute_background(job):
+    # Worker code uses no GTA APIs. The job's immutable result envelope is
+    # delivered by _tick; even BaseException must not silently kill a worker.
+    function = job._work
+    result = error = None
+    try:
+        if not job._cancelled and function is not None:
+            result = function()
+            if isinstance(result, (types.GeneratorType, types.CoroutineType, types.AsyncGeneratorType)):
+                if hasattr(result, "close"):
+                    result.close()
+                raise TypeError("background work must return data, not a generator/coroutine")
+    except BaseException:
+        result = None
+        error = traceback.format_exc()
+    finally:
+        job._work = None
+    with _background_lock:
+        if not job._cancelled:
+            _completed_work.put((job, result, error))
+
+
+def _background_worker():
+    while True:
+        job = _work_queue.get()
+        try:
+            if job is None:
+                return
+            _execute_background(job)
+        finally:
+            _work_queue.task_done()
+            job = None  # Do not retain the last completed result handle while idle.
+
+
+def _ensure_workers():
+    # Lazy, process-lifetime daemon workers. No joins or waits on the game thread.
+    while len(_workers) < 2:
+        worker = threading.Thread(target=_background_worker,
+                                  name=f"SanPythonAndreas-worker-{len(_workers) + 1}", daemon=True)
+        worker.start()
+        _workers.append(worker)
+
+
+def run_in_background(work, on_done=None, *, on_error=None):
+    """Run a no-argument function off-thread and deliver its result on the game thread."""
+    global _next_background_id
+    sa._require_game_thread()
+    if _cancelling:
+        raise RuntimeError("cannot submit background work during cleanup or clock reset")
+    if (not callable(work) or inspect.isgeneratorfunction(work) or inspect.iscoroutinefunction(work)
+            or inspect.isasyncgenfunction(work)):
+        raise TypeError("background work must be a normal callable, not a generator/coroutine")
+    for callback in (on_done, on_error):
+        if callback is not None and not callable(callback):
+            raise TypeError("completion callbacks must be callable or None")
+    if len(_background_jobs) >= 64:
+        raise RuntimeError("too many pending background results; wait or cancel unused jobs")
+    _ensure_workers()
+    _next_background_id += 1
+    job = BackgroundJob(_next_background_id, work, on_done, on_error)
+    _background_jobs[job._id] = job
+    try:
+        _work_queue.put_nowait(job)
+    except queue.Full:
+        job.cancel()
+        raise RuntimeError("background work queue is full; retry later") from None
+    return job
+
+
+def _take_background_results():
+    results = []
+    for _ in range(32):
+        try:
+            results.append(_completed_work.get_nowait())
+        except queue.Empty:
+            break
+    return results
+
+
+def _deliver_background(results):
+    for job, result, error in results:
+        if job._cancelled or _background_jobs.get(job._id) is not job:
+            continue
+        _background_jobs.pop(job._id, None)
+        job._done, job._result, job._error = True, result, error
+        callback = job._on_error if error is not None else job._on_done
+        job._on_done = job._on_error = None
+        if error is not None:
+            print("Background work failed:", job.owner, error)
+        if callback is not None:
+            started = _perf_now()
+            try:
+                callback(error if error is not None else result)
+            except BaseException:
+                details = traceback.format_exc()
+                job._error = (error + "\n" if error else "") + details
+                print("Background completion callback failed:", job.owner, details)
+            finally:
+                elapsed = _perf_now() - started
+                if elapsed >= 0.05:
+                    print(f"Slow background completion ({elapsed * 1000:.1f} ms):", job.owner)
+
+
 def _run_timers(snapshot):
     dispatched = 0
     for timer in snapshot:
@@ -409,6 +573,7 @@ def _run_timers(snapshot):
 
 
 def _register(callbacks, callback):
+    sa._require_game_thread()
     if not callable(callback):
         raise TypeError("event callback must be callable")
     if callback not in callbacks:
@@ -640,6 +805,8 @@ sa.wait = wait
 sa.start_task = start_task
 sa.Model = Model
 sa.load_model = load_model
+sa.BackgroundJob = BackgroundJob
+sa.run_in_background = run_in_background
 
 
 def _notify_error(details):
@@ -692,6 +859,7 @@ def _tick(ready):
     if not ready:
         _poll_keys(False)
         return
+    background_results = _take_background_results()
     if not _loaded:
         _loaded = True
         try:
@@ -716,4 +884,5 @@ def _tick(ready):
         _ready_callbacks.clear()
     _poll_keys(True)
     _dispatch(_frame_callbacks)
+    _deliver_background(background_results)
     _run_timers(timer_snapshot)

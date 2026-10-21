@@ -6,6 +6,8 @@ import sys
 import tempfile
 import types
 import unittest
+import threading
+from unittest import mock
 
 RUNTIME = pathlib.Path(__file__).resolve().parents[1] / "runtime" / "SanPythonAndreas"
 
@@ -19,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 14
+        self.api._host_api_version = 15
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -30,6 +32,7 @@ class RuntimeTests(unittest.TestCase):
         self.real_seconds = 0.0
         self.perf_seconds = 0.0
         self.game_thread = True
+        self.game_thread_id = threading.get_ident()
         self.api._game_time_ms = lambda: self.game_ms
         self.api._require_game_thread = self.require_game_thread
         self.models_loaded = set()
@@ -81,12 +84,19 @@ class RuntimeTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("_spa_runtime", self.root / "_spa_runtime.py")
         self.runtime = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.runtime)
+        self.real_ensure_workers = self.runtime._ensure_workers
+        self.runtime._ensure_workers = lambda: None  # Deterministic queue execution in unit tests.
         self.runtime._real_now = lambda: self.real_seconds
         self.runtime._perf_now = lambda: self.perf_seconds
         self.errors = []
         self.runtime._notify_error = self.errors.append
 
     def tearDown(self):
+        for _ in self.runtime._workers:
+            self.runtime._work_queue.put_nowait(None)
+        for worker in self.runtime._workers:
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
         sys.stdout, sys.stderr = self.stdout, self.stderr
         self.runtime._log.close()
         if self.previous_api is None:
@@ -96,8 +106,15 @@ class RuntimeTests(unittest.TestCase):
         self.temp.cleanup()
 
     def require_game_thread(self):
-        if not self.game_thread:
+        if not self.game_thread or threading.get_ident() != self.game_thread_id:
             raise RuntimeError("requires game thread")
+
+    def execute_one_background_job(self):
+        job = self.runtime._work_queue.get_nowait()
+        try:
+            self.runtime._execute_background(job)
+        finally:
+            self.runtime._work_queue.task_done()
 
     def request_model(self, model):
         self.require_game_thread()
@@ -401,7 +418,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 14
+        self.api._host_api_version = 15
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1243,6 +1260,208 @@ raise RuntimeError('broken')
         self.assertEqual(self.model_refs[411], 0)
         self.assertEqual(self.runtime._models, {})
         self.assertEqual(self.runtime._tasks, {})
+        self.assertNotIn("Disabled failing", self.log())
+
+    def test_background_result_waits_for_active_game_and_runs_on_main_thread(self):
+        self.script("pass")
+        calls = []
+        job = self.api.run_in_background(lambda: {"value": 42},
+                                         lambda result: calls.append((threading.get_ident(), result)))
+        self.execute_one_background_job()
+        self.assertFalse(job.done)
+        self.runtime._tick(False)
+        self.assertEqual(calls, [])
+        self.runtime._tick(True)
+        self.assertEqual(calls, [(self.game_thread_id, {"value": 42})])
+        self.assertTrue(job.done)
+        self.assertEqual(job.result, {"value": 42})
+        self.assertIsNone(job.error)
+        self.assertIsNone(job._on_done)
+        self.assertEqual(self.runtime._background_jobs, {})
+
+    def test_background_cancel_skips_queued_work_and_suppresses_completed_result(self):
+        self.script("pass")
+        calls = []
+        queued = self.api.run_in_background(lambda: calls.append("work"), lambda value: calls.append("callback"))
+        queued.cancel()
+        queued.cancel()
+        self.execute_one_background_job()
+        finished = self.api.run_in_background(lambda: 42, lambda value: calls.append(value))
+        self.execute_one_background_job()
+        finished.cancel()
+        self.runtime._tick(True)
+        self.assertEqual(calls, [])
+        self.assertTrue(queued.cancelled)
+        self.assertTrue(finished.done)
+        self.assertIsNone(finished.result)
+
+    def test_background_worker_and_callback_errors_are_isolated(self):
+        self.script("pass")
+        calls = []
+        def bad_work():
+            raise SystemExit("worker must not exit GTA")
+        failed = self.api.run_in_background(bad_work, on_error=calls.append)
+        def bad_callback(value):
+            raise RuntimeError("completion broke")
+        bad_delivery = self.api.run_in_background(lambda: 10, bad_callback)
+        good = self.api.run_in_background(lambda: 42, calls.append)
+        for _ in range(3):
+            self.execute_one_background_job()
+        self.runtime._tick(True)
+        self.assertIn("SystemExit", calls[0])
+        self.assertEqual(calls[-1], 42)
+        self.assertIn("SystemExit", failed.error)
+        self.assertIn("completion broke", bad_delivery.error)
+        self.assertTrue(good.done)
+        self.assertEqual(self.runtime._background_jobs, {})
+
+    def test_background_limits_queue_and_result_dispatch_budget(self):
+        self.script("pass")
+        jobs = [self.api.run_in_background(lambda: 1) for _ in range(32)]
+        with self.assertRaisesRegex(RuntimeError, "queue is full"):
+            self.api.run_in_background(lambda: 1)
+        self.assertEqual(len(self.runtime._background_jobs), 32)
+        for _ in range(32):
+            self.execute_one_background_job()
+        jobs += [self.api.run_in_background(lambda: 1) for _ in range(32)]
+        for _ in range(32):
+            self.execute_one_background_job()
+        with self.assertRaisesRegex(RuntimeError, "pending background"):
+            self.api.run_in_background(lambda: 1)
+        self.runtime._tick(True)
+        self.assertEqual(sum(job.done for job in jobs), 32)
+        self.runtime._tick(True)
+        self.assertTrue(all(job.done for job in jobs))
+
+    def test_background_reset_cancels_old_results_and_prevents_late_delivery(self):
+        self.script("pass")
+        self.runtime._tick(True)
+        calls = []
+        completed = self.api.run_in_background(lambda: 1, calls.append)
+        self.execute_one_background_job()
+        pending = self.api.run_in_background(lambda: 2, calls.append)
+        self.game_ms = 0
+        self.runtime._tick(False)
+        self.assertTrue(completed.cancelled)
+        self.assertTrue(pending.cancelled)
+        self.execute_one_background_job()
+        self.runtime._tick(True)
+        self.assertEqual(calls, [])
+        self.assertTrue(self.runtime._completed_work.empty())
+        self.assertEqual(self.runtime._background_jobs, {})
+
+    def test_background_script_failure_cancels_work_registered_during_import(self):
+        self.script("import sanandreas as sa\nsa.run_in_background(lambda: 42, lambda result: sa.show_text('bad'))\nraise RuntimeError('broken')")
+        self.runtime._tick(True)
+        self.execute_one_background_job()
+        self.assertEqual(self.runtime._background_jobs, {})
+        self.assertTrue(self.runtime._completed_work.empty())
+        self.assertEqual(self.output, [])
+
+    def test_background_validation_and_wrong_thread_cancellation(self):
+        def generator():
+            yield 1
+        async def coroutine():
+            return 1
+        for work in (None, 1, generator, coroutine):
+            with self.assertRaises(TypeError):
+                self.api.run_in_background(work)
+        for callback in (1, 'callback'):
+            with self.assertRaises(TypeError):
+                self.api.run_in_background(lambda: 1, callback)
+            with self.assertRaises(TypeError):
+                self.api.run_in_background(lambda: 1, on_error=callback)
+        job = self.api.run_in_background(lambda: 1)
+        self.game_thread = False
+        for call in (job.cancel, lambda: self.api.run_in_background(lambda: 1)):
+            with self.assertRaisesRegex(RuntimeError, "game thread"):
+                call()
+        self.game_thread = True
+        job.cancel()
+
+    def test_background_uses_real_workers_without_game_api_access(self):
+        self.script("pass")
+        self.runtime._ensure_workers = self.real_ensure_workers
+        release = threading.Event()
+        started = threading.Event()
+        calls = []
+        worker_threads = []
+        def work():
+            worker_threads.append(threading.get_ident())
+            try:
+                self.api.call_later(0, lambda: None)
+            except RuntimeError:
+                calls.append("guarded")
+            started.set()
+            if not release.wait(timeout=2):
+                raise RuntimeError("test release timed out")
+            return 42
+        job = self.api.run_in_background(work, lambda value: calls.append((threading.get_ident(), value)))
+        try:
+            self.assertTrue(started.wait(timeout=2))
+            self.runtime._tick(True)
+            self.assertFalse(job.done)
+            release.set()
+            completion = self.runtime._completed_work.get(timeout=2)
+            self.runtime._completed_work.put(completion)
+            self.runtime._tick(True)
+            self.assertEqual(calls, ["guarded", (self.game_thread_id, 42)])
+            self.assertNotEqual(worker_threads[0], self.game_thread_id)
+            self.assertTrue(job.done)
+            self.assertEqual(len(self.runtime._workers), 2)
+        finally:
+            release.set()
+
+    def test_running_background_cancel_discards_late_result_and_blocks_event_registration(self):
+        self.script("pass")
+        self.runtime._ensure_workers = self.real_ensure_workers
+        started, release = threading.Event(), threading.Event()
+        calls = []
+        def work():
+            try:
+                self.api.on_frame(lambda: calls.append("bad event"))
+            except RuntimeError:
+                calls.append("event guarded")
+            started.set()
+            if not release.wait(timeout=2):
+                raise RuntimeError("test release timed out")
+            return 42
+        job = self.api.run_in_background(work, calls.append)
+        try:
+            self.assertTrue(started.wait(timeout=2))
+            job.cancel()
+            release.set()
+            with self.runtime._work_queue.all_tasks_done:
+                self.assertTrue(self.runtime._work_queue.all_tasks_done.wait_for(
+                    lambda: self.runtime._work_queue.unfinished_tasks == 0, timeout=2))
+            self.runtime._tick(True)
+            self.assertEqual(calls, ["event guarded"])
+            self.assertTrue(job.done)
+            self.assertTrue(job.cancelled)
+            self.assertIsNone(job.result)
+            self.assertTrue(self.runtime._completed_work.empty())
+        finally:
+            release.set()
+
+    def test_background_example_reads_file_and_cancel_suppresses_display(self):
+        self.script((RUNTIME / "scripts" / "example_background.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        press("O")
+        with mock.patch("time.sleep"):
+            self.execute_one_background_job()
+        self.runtime._tick(True)
+        self.assertIn("Datei gelesen:", self.output[-1])
+        press("O")
+        press("P")
+        count = len(self.output)
+        self.execute_one_background_job()
+        self.runtime._tick(True)
+        self.assertEqual(len(self.output), count)
         self.assertNotIn("Disabled failing", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

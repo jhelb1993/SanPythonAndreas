@@ -196,7 +196,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 14; Python 3.11 + SDK + pybind11 + async model loading ---");
+    StartupLog("--- ASI loaded: host API 15; Python 3.11 + SDK + pybind11 + background work ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

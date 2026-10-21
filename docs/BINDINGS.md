@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.14.0-dev.1`.
-- Aktuelle interne Host-API: Version `14` (asynchrones Modellladen).
+- Aktuelle Paketversion: `0.15.0-dev.1`.
+- Aktuelle interne Host-API: Version `15` (Hintergrundjobs mit Ergebnisqueue).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 30 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 31 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `14` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `15` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -339,7 +339,7 @@ Uhrreset/Echtzeit, Ladefehler und das G/H-Beispiel. Funktion vom Nutzer bestäti
 Prüfstand API 13: Release/x86-Build, 27 native Tests, 51 Python-Tests und
 Paketprüfung bestanden.
 
-## Asynchrones Modellladen (API 14, Spielabnahme offen)
+## Asynchrones Modellladen (API 14, vom Nutzer bestätigt)
 
 ABI ergänzt requestModel(int,DWORD*), modelReady(DWORD), releaseModel(DWORD).
 Anforderung meldet Erfolg, inaktives Spiel, ungültiges Modell oder Referenzlimit;
@@ -376,4 +376,40 @@ Tests prüfen Bereitschaft, Referenzgewinn genau einmal, unabhängige Verbrauche
 Grenzen/Limit, Pause, Timeout, Abbruch, Kontextfreigabe, Uhrreset und Ladefehler.
 Echtes Streaming und Refcount-/TXD-Verhalten brauchen den Spieltest.
 Prüfstand API 14: Release/x86-Build, 30 native Tests, 60 Python-Tests und
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
+
+## Hintergrundjobs (API 15, Spielabnahme offen)
+
+Keine neuen ABI-Felder oder Spieladressen. Python startet bei Bedarf zwei
+Prozess-langlebige Daemon-Threads. Arbeitsqueue: 32 Einträge. Jobregistry: maximal
+64 noch nicht zugestellte Jobs. Ergebnisqueue enthält Daten plus Fehlertext,
+keine Ausnahmeobjekte. GTA-Zugriffe bleiben über die native Threadprüfung
+gesperrt; Python-Eventregistrierung prüft nun ebenfalls den Spielthread.
+
+Worker rufen ausschließlich work() auf und stellen Ergebnisse in eine SimpleQueue.
+Ein Lock synchronisiert Abbruch mit dem Commit eines Ergebnisses; weder Nutzer-
+Code noch Dateizugriffe laufen unter diesem Lock. Cancel verwirft Callbacks und
+wartende Funktionsreferenzen, kann bereits laufenden Code aber nicht abbrechen.
+Worker halten nach Abschluss im Leerlauf keine Referenz auf den letzten Job.
+
+_tick entnimmt zu Beginn eines aktiven Frames maximal 32 Ergebnisse als Snapshot.
+Zustellung erfolgt nach on_frame, vor Timern. Abbruch-/Registryprüfung unmittelbar
+vor Callback verhindert Zustellung alter Ergebnisse; Worker- und Callbackfehler
+werden isoliert geloggt. Callbacks ab 50 ms erhalten eine Langsamkeitsdiagnose.
+done wird erst bei Zustellung/Abbruch gesetzt; result bleibt nach Erfolg lesbar.
+
+Globaler Cleanup und erkannte Uhrresets brechen alle offenen Jobs ab und leeren
+fertige Ergebnisse unter demselben Commit-Lock. Später zurückkehrende Worker
+dürfen keine weiteren Ergebnisse für abgebrochene Jobs einreihen. Laufende
+Funktionen brauchen eigene I/O-Timeouts; es gibt weder Thread-Abschuss noch
+blockierendes Join auf dem Spielthread. Eigentümerdiagnose ist das Work-Modul,
+vollständige Mod-Zuordnung bleibt separat.
+
+Tests prüfen Queuelimits, Zustellbudget, Pause, Queued-/Running-Cancel,
+Fehlerisolierung, Reset-/Ladefehler-Cleanup und das O/P-Beispiel. Zwei echte
+Worker werden im Integrationstest gestartet: Ergebnis läuft auf dem Mainthread,
+Timer-/Eventregistrierung im Worker wird abgewiesen. Native Tests prüfen die
+Thread-Grenze zusätzlich mit einem echten Python-Thread und kompilierten Bindings.
+
+Prüfstand API 15: Release/x86-Build, 31 native Tests, 70 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.

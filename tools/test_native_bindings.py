@@ -3,6 +3,7 @@ import importlib.util
 import pathlib
 import sys
 import unittest
+import threading
 
 module_path = pathlib.Path(sys.argv.pop(1)).resolve()
 spec = importlib.util.spec_from_file_location('sanandreas', module_path)
@@ -19,7 +20,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_models()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 14)
+        self.assertEqual(sa._host_api_version, 15)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -335,6 +336,22 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_ready(False)
         with self.assertRaises(RuntimeError):
             sa._request_model(411)
+
+    def test_actual_worker_thread_cannot_call_game_api(self):
+        errors = []
+        def worker():
+            for call in (sa._require_game_thread, sa._player_health, lambda: sa.show_text('worker'),
+                         lambda: sa._request_model(411)):
+                try:
+                    call()
+                except RuntimeError as error:
+                    errors.append(str(error))
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(errors), 4)
+        self.assertTrue(all('game thread' in error for error in errors))
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

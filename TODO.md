@@ -109,14 +109,16 @@ Fehlerisolierung, 64-Aufrufe-Limit pro Frame und Diagnose langsamer Timer.
 Timer vom Nutzer im Spiel bestätigt. API 13 ergänzt kooperative Generator-Tasks
 mit wait(), Abbruch und finally-Cleanup; vom Nutzer im Spiel bestätigt.
 API 14 ergänzt asynchrones Modellladen mit Timeout und eigenen Modellreferenzen;
-Spielabnahme offen. async/await und vollständige Mod-Zuordnung folgen separat.
+vom Nutzer im Spiel bestätigt. API 15 ergänzt Hintergrundjobs mit begrenzten
+Queues und Ergebniszustellung auf dem Spielthread; Spielabnahme offen.
+async/await und vollständige Mod-Zuordnung folgen separat.
 
 - [x] Verzögerte und wiederholte Aufrufe anbieten: API 12 vom Nutzer im Spiel bestätigt.
 - [x] Kooperatives Warten ermöglichen, ohne den Spielthread zu blockieren: API 13 vom Nutzer im Spiel bestätigt (Generatoren).
 - [x] Spielzeit und Echtzeit sowie Verhalten während Pause für Timer ausdrücklich festlegen.
 - [ ] Tasks abbrechen und dem verursachenden Skript zuordnen können: API 13 kann abbrechen und zeigt das Generator-Modul als owner; vollständige Mod-Lebensdauer folgt.
-- [ ] Modellanforderung mit Bereitschaftsprüfung, Timeout und Freigabe kapseln: API 14 implementiert (IDs, eigene Referenzen, Kontextmanager), Spielabnahme offen.
-- [ ] Hintergrundarbeit mit einer Queue für Rückgaben auf den Spielthread ermöglichen.
+- [x] Modellanforderung mit Bereitschaftsprüfung, Timeout und Freigabe kapseln: API 14 vom Nutzer im Spiel bestätigt (IDs, eigene Referenzen, Kontextmanager).
+- [ ] Hintergrundarbeit mit einer Queue für Rückgaben auf den Spielthread ermöglichen: API 15 implementiert, Spielabnahme offen.
 - [x] Task-Fehler isolieren und langsame Callbacks protokollieren: für Timer und Generator-Tasks ab API 13 implementiert, Task-Funktion vom Nutzer bestätigt.
 
 Abnahme: Ein Countdown und eine Modellanforderung laufen ohne Ruckeln durch

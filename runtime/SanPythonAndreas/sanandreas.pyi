@@ -1,6 +1,6 @@
 """Editor types for the built-in GTA module; not an executable implementation."""
 from collections.abc import Callable, Iterator, Generator
-from typing import TypeVar, NamedTuple
+from typing import TypeVar, NamedTuple, Any
 from enum import IntEnum
 
 __version__: str
@@ -119,6 +119,38 @@ def load_model(model_id: int, *, timeout: float = 10) -> Generator[Wait, None, M
     Model IDs 1..19999; metadata and streamability are checked. Timeout uses real
     seconds and is checked at active frames; ready wins if both happen together.
     Cancelling a pending task releases the request. No blocking load-all call.
+    """
+    ...
+
+
+class BackgroundJob:
+    """Worker handle. Cancellation suppresses callbacks; running work may continue."""
+    @property
+    def done(self) -> bool:
+        """Delivered/failed/cancelled, rather than merely finished in the worker."""
+        ...
+    @property
+    def cancelled(self) -> bool: ...
+    @property
+    def owner(self) -> str: ...
+    @property
+    def result(self) -> Any: ...
+    @property
+    def error(self) -> str | None:
+        """Worker/completion error as text. No exception/traceback objects retained."""
+        ...
+    def cancel(self) -> None:
+        """Game thread only; queued work is skipped, running work cannot be killed."""
+        ...
+
+
+def run_in_background(work: Callable[[], Any], on_done: Callable[[Any], None] | None = None,
+                      *, on_error: Callable[[str], None] | None = None) -> BackgroundJob:
+    """Two workers, 32 queued jobs, 64 undelivered jobs; submission on game thread.
+
+    Work must not call the GTA API. Result callbacks run only during active
+    gameplay, after on_frame and before timers. At most 32 results per frame.
+    Use normal functions returning data; generators/async coroutines unsupported.
     """
     ...
 

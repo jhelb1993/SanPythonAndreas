@@ -13,6 +13,7 @@ namespace py = pybind11;
 namespace
 {
     bool onThread = true, ready = true;
+    const DWORD hostThread = GetCurrentThreadId();
     float health = 25, maximum = 100;
     float armour = 10;
     int money = 500, wantedLevel = 1, wantedMaximum = 6;
@@ -155,7 +156,7 @@ namespace
     bool positionAvailable = true;
     float positionX = 12.5f, positionY = -34.0f, positionZ = 8.0f;
     BOOL __cdecl IsReady() { return ready ? TRUE : FALSE; }
-    BOOL __cdecl IsThread() { return onThread ? TRUE : FALSE; }
+    BOOL __cdecl IsThread() { return onThread && GetCurrentThreadId() == hostThread ? TRUE : FALSE; }
     void __cdecl ShowText(const char* value) { lastText = value; }
     void __cdecl Log(const char*) {}
     BOOL __cdecl KeyDown(int key) { return key == VK_F5 ? TRUE : FALSE; }
