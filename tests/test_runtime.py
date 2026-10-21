@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 18
+        self.api._host_api_version = 19
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -84,6 +84,9 @@ class RuntimeTests(unittest.TestCase):
         self.api._cleanup_owned_vehicles = self.cleanup_owned_vehicles
         self.api._enter_player_vehicle = self.enter_vehicle
         self.api._leave_player_vehicle = self.leave_vehicle
+        self.api._set_vehicle_health = self.set_vehicle_health
+        self.api._repair_vehicle = self.repair_vehicle
+        self.repair_count = 0
         self.exit_pending = False
         self.seat_busy = False
         self.position = (12.5, -34.0, 8.0)
@@ -265,6 +268,22 @@ class RuntimeTests(unittest.TestCase):
             self.busy_owned_vehicles.discard(self.current_vehicle_id)
             self.vehicle_data = None
             self.exit_pending = False
+
+    def set_vehicle_health(self, token, value):
+        self.require_game_thread()
+        if isinstance(value, bool) or not isinstance(value, (float, int)):
+            raise TypeError("health must be numeric")
+        if not 0 <= value <= 1000:
+            raise ValueError("health out of bounds")
+        self.vehicle_info(token)
+        data = self.vehicle_objects[self.vehicle_handles[token]]
+        if data.health <= 0:
+            raise RuntimeError("wreck")
+        data.health = value
+
+    def repair_vehicle(self, token):
+        self.set_vehicle_health(token, 1000)
+        self.repair_count += 1
 
     def read_weapon(self):
         if self.stats is None:
@@ -529,7 +548,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 18
+        self.api._host_api_version = 19
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1596,6 +1615,45 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_vehicle_health_and_repair_refresh_same_car_without_mutating_snapshot(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (10, 20, 30))
+        old = car.snapshot
+        car.health = 500
+        self.assertEqual(car.health, 500)
+        self.assertEqual(old.health, 1000)
+        car.repair()
+        self.assertEqual(car.health, 1000)
+        self.assertEqual(self.repair_count, 1)
+        for value in (True, "500", None):
+            with self.assertRaises(TypeError):
+                car.health = value
+        for value in (-1, 1001, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                car.health = value
+        self.game_thread = False
+        for action in (lambda: setattr(car, "health", 500), car.repair):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.game_thread = True
+        car.close()
+        for action in (lambda: setattr(car, "health", 500), car.repair):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
+    def test_vehicle_health_and_repair_reject_removed_and_inactive_cars(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        self.stats = None
+        for action in (lambda: setattr(car, "health", 500), car.repair):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.stats = [25, 100]
+        self.invalid_vehicle_handles.add(car._token)
+        for action in (lambda: setattr(car, "health", 500), car.repair):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
     def test_player_seating_driver_passenger_and_animated_exit(self):
         self.models_loaded.add(411)
         car = self.api.spawn_vehicle(411, (10, 20, 30))
@@ -1721,6 +1779,14 @@ raise RuntimeError('broken')
         self.assertEqual(self.model_leases, {})
         press("E")
         self.assertTrue(self.api.player().is_driver)
+        for code, expected in ((0x72, 500), (0x73, 1000)):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(code)
+            self.runtime._tick(True)
+            entity = next(iter(self.owned_vehicles))
+            self.assertEqual(self.vehicle_objects[entity].health, expected)
+        self.assertEqual(self.repair_count, 1)
         press("Q")
         self.assertTrue(self.exit_pending)
         self.assertTrue(self.api.player().in_vehicle)

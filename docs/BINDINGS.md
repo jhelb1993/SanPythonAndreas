@@ -533,3 +533,25 @@ tests and bundle verification; these did not cover GTA's autonomous-driving
 side effect. The control fix requires renewed game acceptance.
 Version 0.18.0-dev.2 passed Release/x86 build, 81 Python tests, 43 native tests
 and bundle verification.
+
+## Vehicle health and repair (API 19)
+
+`Vehicle.health` now accepts finite numbers in 0..1000 (booleans excluded).
+The getter remains the raw GTA value and `VehicleInfo` stays immutable.
+Setting health changes only that value. Low values may ignite or destroy the car.
+`Vehicle.repair()` invokes GTA's automobile Fix through vtable slot 50, restores
+health to 1000, extinguishes an attached vehicle fire, resets the burning timer
+and clears the engine-broken flag. The engine implementation resets body,
+door/window and tyre damage; see the
+[automobile Fix implementation](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Entity/Vehicle/Automobile.cpp).
+
+Both operations require an active game thread and a valid checked handle.
+Only normal automobiles are supported; wrecked/zero-health cars and
+entry/exit/door transitions are rejected. Captured cars can be repaired too;
+creation ownership is required only for deletion.
+
+The Infernus example and README use F3 to set health to 500 and F4 for full repair.
+An old snapshot keeps its original value. Game acceptance is pending, including
+visual repairs, punctured tyres, broken windows and fire extinguishing.
+Release/x86 build, 83 Python tests, 46 native binding tests and bundle
+verification passed.

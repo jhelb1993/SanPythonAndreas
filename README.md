@@ -238,6 +238,18 @@ def enter_spawned_vehicle():
     # Requires a free seat, same interior, within 50 metres and a stationary car.
 
 
+@key("F3")  # Change health only; leaves body and tyre damage as-is.
+def damage_spawned_vehicle():
+    if spawned_vehicle is not None:
+        spawned_vehicle.health = 500  # Finite 0..1000; low values can ignite cars.
+
+
+@key("F4")  # Full repair: health, body, doors, windows, tyres and engine/fire state.
+def repair_spawned_vehicle():
+    if spawned_vehicle is not None:
+        spawned_vehicle.repair()  # Normal cars only; cannot revive a wreck.
+
+
 @key("Q")  # Request normal exit animation. Stop the car first.
 def leave_vehicle():
     player().leave_vehicle()

@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 18)
+        self.assertEqual(sa._host_api_version, 19)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,55 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_health_changes_do_not_repair_physical_damage(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        before = sa._vehicle_info(car)
+        sa._set_vehicle_health(car, 500)
+        self.assertEqual(sa._vehicle_info(car).health, 500)
+        self.assertEqual(before.health, 1000)
+        self.assertEqual(sa._test_vehicle_damage_state(car), (True, True, True))
+        sa._repair_vehicle(car)
+        self.assertEqual(sa._vehicle_info(car).health, 1000)
+        self.assertEqual(sa._test_vehicle_damage_state(car), (False, False, False))
+        sa._repair_vehicle(car)
+        self.assertTrue(sa._vehicle_handle_valid(car))
+
+    def test_vehicle_maintenance_validates_health_and_rejects_wrecks_and_unsupported_types(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value in (True, "500", None):
+            with self.assertRaises(TypeError):
+                sa._set_vehicle_health(car, value)
+        for value in (-1, 1001, float("inf"), float("nan")):
+            with self.assertRaises(ValueError):
+                sa._set_vehicle_health(car, value)
+        for wrecked, unsupported in ((True, False), (False, True)):
+            sa._test_vehicle_damage(car, wrecked, unsupported)
+            for action in (lambda: sa._set_vehicle_health(car, 500), lambda: sa._repair_vehicle(car)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            self.assertEqual(sa._vehicle_info(car).health, 1000)
+        sa._test_vehicle_damage(car, False, False)
+        sa._set_vehicle_health(car, 0)
+        self.assertEqual(sa._vehicle_info(car).health, 0)
+        with self.assertRaises(RuntimeError):
+            sa._repair_vehicle(car)
+
+    def test_vehicle_maintenance_guards_thread_pause_and_stale_handles(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (lambda: sa._set_vehicle_health(car, 500), lambda: sa._repair_vehicle(car)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._close_vehicle_handle(car)
+        for action in (lambda: sa._set_vehicle_health(car, 500), lambda: sa._repair_vehicle(car)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_vehicle_seats_driver_passenger_and_delayed_exit(self):
         sa._test_model_loaded(411, True)

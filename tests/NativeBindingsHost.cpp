@@ -59,7 +59,11 @@ namespace
     DWORD __cdecl GameTimeMs() { return gameTimeMs; }
     int vehicleState = 0;
     SpaPlayerVehicle vehicleData{411, TRUE, 750, 10, 20, 30};
-    struct FakeVehicleEntity { int generation; SpaPlayerVehicle data; };
+    struct FakeVehicleEntity {
+        int generation; SpaPlayerVehicle data;
+        bool damaged = true, burning = true, engineBroken = true;
+        bool wrecked = false, unsupported = false;
+    };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
     std::unordered_map<DWORD, FakeVehicleHandle> vehicleHandles;
@@ -96,6 +100,26 @@ namespace
         return 1;
     }
     void __cdecl CloseVehicle(DWORD token) { vehicleHandles.erase(token); }
+    int __cdecl SetVehicleHealth(DWORD token, float value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.wrecked || car.unsupported || car.data.health <= 0) return 3;
+        if (!std::isfinite(value) || value < 0 || value > 1000) return 4;
+        car.data.health = value;
+        return 0;
+    }
+    int __cdecl RepairVehicle(DWORD token)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.wrecked || car.unsupported || car.data.health <= 0) return 3;
+        car.data.health = 1000;
+        car.damaged = car.burning = car.engineBroken = false;
+        return 0;
+    }
     std::unordered_map<int, bool> ownedVehicles; // value: occupied/attached
     int nextOwnedVehicle = 1000;
     int __cdecl SpawnVehicle(int model, float x, float y, float z, float, DWORD* token)
@@ -313,7 +337,8 @@ namespace
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
-        SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle};
+        SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
+        SetVehicleHealth, RepairVehicle};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -322,6 +347,15 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
+    module.def("_test_vehicle_damage", [](DWORD token, bool wrecked, bool unsupported) {
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        car.damaged = car.burning = car.engineBroken = true;
+        car.wrecked = wrecked; car.unsupported = unsupported;
+    });
+    module.def("_test_vehicle_damage_state", [](DWORD token) {
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        return py::make_tuple(car.damaged, car.burning, car.engineBroken);
+    });
     module.def("_test_player_seat_warp", [](bool completed, bool failProcessing) {
         struct Task { bool m_bWarpingInToCar; };
         std::vector<std::string> calls;

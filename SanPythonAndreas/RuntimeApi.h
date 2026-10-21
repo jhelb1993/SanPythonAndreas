@@ -64,5 +64,9 @@ struct SpaHostApi
     // 7 different interior, 8 farther than 50 metres.
     int (__cdecl* enterPlayerVehicle)(DWORD, int);
     int (__cdecl* leavePlayerVehicle)(); // animated request; on foot is a no-op
+    // 0 success, 1 inactive, 2 stale handle, 3 unsupported/wrecked/transition,
+    // 4 invalid health. Setter changes only health; repair resets physical damage.
+    int (__cdecl* setVehicleHealth)(DWORD, float);
+    int (__cdecl* repairVehicle)(DWORD);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

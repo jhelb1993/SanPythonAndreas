@@ -256,6 +256,21 @@ class Vehicle:
     def model_id(self) -> int: ...
     @property
     def health(self) -> float: ...
+    @health.setter
+    def health(self, value: float) -> None:
+        """Normal cars only; finite 0..1000, changes health without fixing damage.
+
+        Zero/low values can destroy or ignite the vehicle. Wrecks cannot be revived.
+        Requires active gameplay and a valid handle.
+        """
+        ...
+    def repair(self) -> None:
+        """Restore health to 1000 and repair body, doors, windows and tyres.
+
+        Extinguishes vehicle fire, resets burning timer and engine damage.
+        Normal cars only; rejects wrecks and entry/exit/door transitions.
+        """
+        ...
     @property
     def position(self) -> Vector3: ...
     def close(self) -> None:

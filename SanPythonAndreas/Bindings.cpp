@@ -74,6 +74,18 @@ namespace
         }
     }
 
+    void VehicleMaintenanceStatus(int status)
+    {
+        switch (status)
+        {
+        case 0: return;
+        case 2: throw InvalidVehicle("vehicle was removed or its handle closed");
+        case 3: throw std::runtime_error("requires a normal car that is not wrecked, outside door/entry/exit transitions");
+        case 4: throw py::value_error("vehicle health must be finite and between 0 and 1000");
+        default: throw std::runtime_error("vehicle maintenance requires active gameplay");
+        }
+    }
+
     void SetPlayerHealth(py::handle value)
     {
         RequireGameThread();
@@ -275,6 +287,20 @@ PYBIND11_MODULE(sanandreas, module)
     module.def("_leave_player_vehicle", [] {
         RequireGameThread();
         VehicleSeatStatus(host->leavePlayerVehicle());
+    });
+    module.def("_set_vehicle_health", [](py::handle token, py::handle value) {
+        RequireGameThread();
+        if (py::isinstance<py::bool_>(value)) throw py::type_error("health must be a number, not bool");
+        const double number = PyFloat_AsDouble(value.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (!std::isfinite(number) || number < 0 || number > 1000)
+            throw py::value_error("vehicle health must be finite and between 0 and 1000");
+        VehicleMaintenanceStatus(host->setVehicleHealth(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), static_cast<float>(number)));
+    });
+    module.def("_repair_vehicle", [](py::handle token) {
+        RequireGameThread();
+        VehicleMaintenanceStatus(host->repairVehicle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token")));
     });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {

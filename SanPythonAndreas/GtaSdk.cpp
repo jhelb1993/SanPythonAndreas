@@ -19,6 +19,8 @@
 #include <CTaskComplexLeaveCar.h>
 #include <CTaskSimpleCarSetPedInAsDriver.h>
 #include <CTaskSimpleCarSetPedInAsPassenger.h>
+#include <CAutomobile.h>
+#include <CFire.h>
 #include "PlayerSeatWarp.h"
 #include <array>
 #include <CHeli.h>
@@ -725,6 +727,45 @@ int sdk::LeavePlayerVehicle() noexcept
         task, vehicle, door, 0, true, false);
     reinterpret_cast<void (__thiscall*)(CTaskManager*, CTask*, int, bool)>(0x681AF0)(
         &player->m_pIntelligence->m_TaskMgr, task, TASK_PRIMARY_PRIMARY, false);
+    return 0;
+}
+
+int sdk::SetVehicleHealth(DWORD token, float value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    if (!std::isfinite(value) || value < 0 || value > 1000) return 4;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (!Accessible(vehicle, sizeof(CAutomobile), true)
+        || vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE
+        || vehicle->m_nStatus == STATUS_WRECKED || !std::isfinite(vehicle->m_fHealth)
+        || vehicle->m_fHealth <= 0 || vehicle->m_nGettingInFlags || vehicle->m_nGettingOutFlags
+        || vehicle->m_nNumGettingIn || reinterpret_cast<bool (__cdecl*)()>(0x43E400)()) return 3;
+    vehicle->m_fHealth = value;
+    return 0;
+}
+
+int sdk::RepairVehicle(DWORD token) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE
+        || !Accessible(vehicle, sizeof(CAutomobile), true)
+        || vehicle->m_nStatus == STATUS_WRECKED || !std::isfinite(vehicle->m_fHealth)
+        || vehicle->m_fHealth <= 0 || !vehicle->m_pRwClump || !vehicle->m_pHandlingData
+        || vehicle->m_nGettingInFlags || vehicle->m_nGettingOutFlags || vehicle->m_nNumGettingIn
+        || reinterpret_cast<bool (__cdecl*)()>(0x43E400)()) return 3;
+    auto* fire = vehicle->m_pFire;
+    if (fire && (!Accessible(fire, sizeof(CFire), true) || fire->m_pEntityTarget != vehicle)) return 3;
+    // CVehicle::Fix uses vtable slot 50 in the pinned SDK. Its automobile
+    // implementation restores body/components, doors, windows and tyre states.
+    auto** table = *reinterpret_cast<void***>(vehicle);
+    reinterpret_cast<void (__thiscall*)(CVehicle*)>(table[50])(vehicle);
+    if (fire) reinterpret_cast<void (__thiscall*)(CFire*)>(0x5393F0)(fire);
+    static_cast<CAutomobile*>(vehicle)->m_fBurningTimer = 0;
+    vehicle->m_nVehicleFlags.bEngineBroken = false;
+    vehicle->m_fHealth = 1000;
     return 0;
 }
 

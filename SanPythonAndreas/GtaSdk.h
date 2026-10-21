@@ -27,6 +27,8 @@ namespace sdk
     void CleanupOwnedVehicles() noexcept;
     int EnterPlayerVehicle(DWORD token, int seat) noexcept;
     int LeavePlayerVehicle() noexcept;
+    int SetVehicleHealth(DWORD token, float value) noexcept;
+    int RepairVehicle(DWORD token) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;
