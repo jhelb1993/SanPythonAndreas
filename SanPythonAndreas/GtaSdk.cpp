@@ -97,12 +97,15 @@ bool sdk::ReadPlayerHealth(float* health, float* maximum) noexcept
 {
     if (!game::IsGameThread() || !game::IsReady())
         return false;
-    const CPed* player = FindCurrentPlayer();
-    if (!player || !Accessible(&player->m_fHealth, sizeof(float))
-        || !Accessible(&player->m_fMaxHealth, sizeof(float)))
+    const CPlayerInfo* info = CurrentPlayerInfo();
+    if (!info) return false;
+    const CPed* player = info->m_pPed;
+    if (!Accessible(&player->m_fHealth, sizeof(float)))
         return false;
     *health = player->m_fHealth;
-    *maximum = player->m_fMaxHealth;
+    // CPlayerInfo::AddHealth uses this player-specific limit. The raw
+    // STAT_MAX_HEALTH uses different units; leave its conversion to GTA.
+    *maximum = static_cast<float>(info->m_nMaxHealth);
     return std::isfinite(*health) && *health >= 0
         && std::isfinite(*maximum) && *maximum > 0;
 }

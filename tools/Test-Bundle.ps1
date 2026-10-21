@@ -13,8 +13,8 @@ $asiText = [Text.Encoding]::ASCII.GetString($asiBytes)
 if ($asiText.Contains('python38.dll')) {
     throw 'Outdated ASI: imports Python 3.8. Rebuild SanPythonAndreas.vcxproj, not just PythonRuntime.vcxproj.'
 }
-if (-not $asiText.Contains('host API 8')) {
-    throw 'Outdated ASI: current money/wanted host API marker missing. Rebuild the host project.'
+if (-not $asiText.Contains('host API 9')) {
+    throw 'Outdated ASI: current player health limit host API marker missing. Rebuild the host project.'
 }
 $runtimeBytes = [IO.File]::ReadAllBytes((Join-Path $bundle 'SanPythonAndreas\SanPythonRuntime.dll'))
 $runtimeText = [Text.Encoding]::ASCII.GetString($runtimeBytes)
@@ -25,7 +25,7 @@ if (-not (Test-Path (Join-Path $bundle 'SanPythonAndreas\bindings-dependencies.j
     throw 'Missing binding dependency manifest in bundle.'
 }
 $bootstrap = Get-Content (Join-Path $bundle 'SanPythonAndreas\_spa_runtime.py') -Raw
-if (-not $bootstrap.Contains('BOOTSTRAP_API_VERSION = 8')) { throw 'Outdated Python bootstrap API.' }
+if (-not $bootstrap.Contains('BOOTSTRAP_API_VERSION = 9')) { throw 'Outdated Python bootstrap API.' }
 if ($runtimeText.Contains('_test_reset')) { throw 'Test-only controls found in production runtime DLL.' }
 $python = Join-Path $bundle 'SanPythonAndreas\python\python.exe'
 & $python -I -S (Join-Path $PSScriptRoot 'check_bundle.py')

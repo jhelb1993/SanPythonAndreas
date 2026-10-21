@@ -168,7 +168,8 @@ def heal():
   Tastendrücke vollständig zwischen zwei Spielcallbacks können übersehen werden.
 - `player()`: aktuelle Spieleransicht oder `None`, wenn kein aktiver Spieler
   verfügbar ist. `health` ist les- und schreibbar, `max_health` nur lesbar.
-  Werte kommen aus den CPed-Gesundheitsfeldern des aktuellen Spielers. Schreiben
+  `health` kommt aus CPed, `max_health` aus dem spielerspezifischen
+  `CPlayerInfo::m_nMaxHealth` (ab API 9). Schreiben
   erlaubt endliche Zahlen zwischen 0 und `max_health`; `bool`, NaN und Unendlich
   werden abgewiesen. Tote Spieler können damit nicht wiederbelebt werden.
   Eine aufbewahrte Ansicht prüft bei jedem Zugriff den aktuellen Spieler neu;
@@ -378,6 +379,23 @@ import example_money_wanted
 - F11: Fahndungslevel 0 anfordern.
 - F12: Fahndungslevel 3 anfordern; HUD und Log zeigen den tatsächlichen Wert.
 
-ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+API-8-Funktion vom Nutzer im Spiel bestätigt. Spieltest:
 Geldanzeige und Kontostand kontrollieren, Sterne erhöhen und wieder entfernen;
 Pause, Fokuswechsel, Fahrzeug sowie fehlenden/toten Spieler berücksichtigen.
+
+## Spielerspezifische maximale Gesundheit (API 9)
+
+Paket `0.9.0-dev.1`, Host-API 9: `player.max_health` liest jetzt das aktuelle
+`CPlayerInfo::m_nMaxHealth` anstelle des allgemeinen `CPed::m_fMaxHealth`.
+Dieses Spielerlimit verwendet GTA auch beim Auffüllen der Gesundheit. Der
+Rohwert der Statistik `STAT_MAX_HEALTH` wird nicht als Gesundheit interpretiert.
+Die API verändert weder Statistiken noch das Maximum und bleibt nur lesbar.
+
+F5 und `player.health = player.max_health` verwenden das aktuelle Spielerlimit.
+Kein neuer Import nötig. Auch die Prüfung beim Gesundheitsschreiben liest das
+Limit jedes Mal neu. Bloßes Lesen senkt überhöhte Gesundheit nicht ab.
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+mit normalem Spielstand und einem Spielstand mit erhöhter Maximalgesundheit
+Schaden nehmen, F5 drücken und die vollständige Heilung kontrollieren. Nach
+Spielstandwechsel erneut prüfen; fehlende und tote Spieler bleiben ausgeschlossen.

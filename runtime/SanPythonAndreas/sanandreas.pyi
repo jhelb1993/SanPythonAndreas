@@ -69,7 +69,9 @@ class Player:
     @wanted_level.setter
     def wanted_level(self, value: int) -> None: ...
     @property
-    def max_health(self) -> float: ...
+    def max_health(self) -> float:
+        """Read-only player-specific health limit, maintained by GTA."""
+        ...
     @property
     def position(self) -> Vector3:
         """Detached snapshot. Assignment keeps the current interior; teleport can change it."""

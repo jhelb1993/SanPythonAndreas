@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 8
+        self.api._host_api_version = 9
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -186,6 +186,18 @@ def second(): sa.show_text('second')
         self.assertEqual(self.stats[0], 100.0)
         self.assertEqual(self.output.count("Spieler geheilt!"), 2)
 
+    def test_f5_example_uses_current_health_limit_after_stat_change(self):
+        self.script((RUNTIME / "scripts" / "example_heal.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        for maximum in (100, 150, 176, 200):
+            self.stats = [25, maximum]
+            self.keys.add(0x74)
+            self.runtime._tick(True)
+            self.assertEqual(self.stats[0], maximum)
+            self.keys.clear()
+            self.runtime._tick(True)
+        self.assertNotIn("Disabled failing callback", self.log())
+
     def test_held_key_during_start_pause_and_focus_change_is_ignored(self):
         self.script("import sanandreas as sa\n@sa.on_key_down('F5')\ndef heal(): sa.show_text('press')\n")
         self.keys.add(0x74)
@@ -288,7 +300,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 8
+        self.api._host_api_version = 9
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()

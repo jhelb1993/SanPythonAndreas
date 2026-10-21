@@ -185,7 +185,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 8; Python 3.11 + SDK + pybind11 + money + wanted level ---");
+    StartupLog("--- ASI loaded: host API 9; Python 3.11 + SDK + pybind11 + player health limit ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

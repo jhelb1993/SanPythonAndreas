@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.8.0-dev.1`.
-- Aktuelle interne Host-API: Version `8` (Geld und Fahndungslevel).
+- Aktuelle Paketversion: `0.9.0-dev.1`.
+- Aktuelle interne Host-API: Version `9` (spielerspezifisches Gesundheitslimit).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 20 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 21 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `8` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `9` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -174,7 +174,7 @@ Pause, Fokuswechsel, Fahrzeug und fehlenden/toten Spieler prüfen.
 Prüfstand API 7: Release/x86-Build, 17 native Tests, 23 Python-Tests und
 Paketprüfung bestanden. Die Funktion wurde vom Nutzer im Spiel bestätigt.
 
-## Geld und Fahndungslevel (API 8, Spielabnahme offen)
+## Geld und Fahndungslevel (API 8, vom Nutzer bestätigt)
 
 ABI um vier Lese-/Schreibfunktionen für Integer ergänzt. `CWorld.cpp` im
 gepinnten SDK dokumentiert `PlayerInFocus` (0xB7CD74) und `Players` (0xB7CD98).
@@ -198,4 +198,25 @@ Tests simulieren Grenzen, falsche Typen, Integer-Überlauf, Tod, Spielerwechsel,
 Threadprüfung, Spielmaximum und Cheats. Reale Geldanzeige, Verfolgung und
 GTA-Adressen brauchen die Spielabnahme. Beispiel: `example_money_wanted.py`.
 Prüfstand API 8: Release/x86-Build, 20 native Tests, 25 Python-Tests und
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
+
+## Maximale Spielergesundheit (API 9, Spielabnahme offen)
+
+Unveränderte ABI-Struktur; `playerHealth` liefert als Maximum nun
+`CPlayerInfo::m_nMaxHealth`. `CurrentPlayerInfo()` prüft aktiven Spieler,
+Thread, Fokusindex, Speicher und Ped-Zuordnung. Fehlende/ungültige Info und
+Maximum 0 führen zu nicht verfügbarem Spieler, ohne stillen Ped-Fallback.
+Gesundheit bleibt `CPed::m_fHealth`; keine Statistik wird verändert.
+
+Die bisherige Verwendung des generischen `CPed::m_fMaxHealth` entspricht nicht
+der Grenze von GTAs `CPlayerInfo::AddHealth` (0x56EAB0).
+Quellenvergleich: [gta-reversed PlayerInfo::AddHealth](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/PlayerInfo.cpp)
+und [Stats](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Stats.cpp).
+Die Umrechnung des Rohstats und Gesundheitsboni bleiben vollständig bei GTA.
+
+Bindings prüfen neue Schreibwerte erneut gegen das aktuelle Maximum. Lesen
+verändert keine überhöhte Gesundheit. Tests simulieren steigende/fallende Limits
+und F5-Heilen nach Änderungen; die tatsächlichen CPlayerInfo-Werte und
+Gesundheitsboni brauchen den Spieltest mit unterschiedlichen Spielständen.
+Prüfstand API 9: Release/x86-Build, 21 native Tests, 26 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.

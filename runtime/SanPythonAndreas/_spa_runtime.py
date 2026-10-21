@@ -6,7 +6,7 @@ import traceback
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 8
+BOOTSTRAP_API_VERSION = 9
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -156,6 +156,7 @@ class Player:
 
     @property
     def max_health(self):
+        """Current player-specific health limit maintained by GTA."""
         return self._stats()[1]
 
 

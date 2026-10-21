@@ -120,6 +120,7 @@ void InstallTestControls(py::module_& module)
     module.def("_test_wanted_maximum", [](int value) { wantedMaximum = value; });
     module.def("_test_wanted_blocked", [](bool value) { wantedBlocked = value; });
     module.def("_test_thread", [](bool value) { onThread = value; });
+    module.def("_test_max_health", [](float value) { maximum = value; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

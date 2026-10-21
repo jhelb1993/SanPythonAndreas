@@ -15,7 +15,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 8)
+        self.assertEqual(sa._host_api_version, 9)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -27,6 +27,21 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_health_setter_rechecks_player_limit_after_stat_changes(self):
+        sa._test_max_health(150)
+        self.assertEqual(sa._player_health(), (25, 150))
+        sa._set_player_health(150)
+        self.assertEqual(sa._player_health(), (150, 150))
+        with self.assertRaises(ValueError):
+            sa._set_player_health(151)
+        sa._test_max_health(100)
+        # Reading a lower maximum must not damage an over-healed player.
+        self.assertEqual(sa._player_health(), (150, 100))
+        with self.assertRaises(ValueError):
+            sa._set_player_health(150)
+        sa._set_player_health(100)
+        self.assertEqual(sa._player_health(), (100, 100))
 
     def test_health_rejects_invalid_values(self):
         for value in (-1, 101, float('nan'), float('inf'), -float('inf')):
