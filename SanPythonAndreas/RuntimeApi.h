@@ -21,5 +21,7 @@ struct SpaHostApi
     int (__cdecl* teleportPlayer)(float, float, float, int); // interior -1 = current
     int (__cdecl* playerHeading)(float*); // degrees; status codes as above
     int (__cdecl* setPlayerHeading)(float);
+    BOOL (__cdecl* playerArmour)(float*);
+    BOOL (__cdecl* setPlayerArmour)(float);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

@@ -15,7 +15,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 6)
+        self.assertEqual(sa._host_api_version, 7)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -70,9 +70,35 @@ class NativeBindingsTests(unittest.TestCase):
         calls = [lambda: sa.show_text('x'), sa._player_health,
                  lambda: sa._set_player_health(100), lambda: sa._is_key_down(0x74), sa._has_focus, sa._player_position, sa._player_interior,
                  lambda: sa._teleport_player(sa.Vector3()), sa._player_heading,
-                 lambda: sa._set_player_heading(90)]
+                 lambda: sa._set_player_heading(90), sa._player_armour,
+                 lambda: sa._set_player_armour(100)]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
+                call()
+
+    def test_armour_reads_writes_and_rejects_invalid_values(self):
+        self.assertEqual(sa._player_armour(), 10)
+        for value in (0, 25.5, 100):
+            sa._set_player_armour(value)
+            self.assertEqual(sa._player_armour(), value)
+        for value in (-1, 101, float('nan'), float('inf'), -float('inf')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                sa._set_player_armour(value)
+        for value in (True, '100', None):
+            with self.subTest(value=value), self.assertRaises(TypeError):
+                sa._set_player_armour(value)
+        self.assertEqual(sa._player_armour(), 100)
+        self.assertEqual(sa._player_health(), (25, 100))
+
+    def test_armour_checks_missing_and_dead_player(self):
+        sa._test_dead()
+        self.assertEqual(sa._player_armour(), 10)
+        with self.assertRaises(RuntimeError):
+            sa._set_player_armour(100)
+        self.assertEqual(sa._player_armour(), 10)
+        sa._test_ready(False)
+        for call in (sa._player_armour, lambda: sa._set_player_armour(100)):
+            with self.assertRaises(RuntimeError):
                 call()
 
     def test_vector_operations(self):

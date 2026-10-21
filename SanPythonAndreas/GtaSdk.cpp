@@ -18,6 +18,7 @@
 static_assert(sizeof(void*) == 4);
 static_assert(offsetof(CPed, m_fHealth) == 0x540);
 static_assert(offsetof(CPed, m_fMaxHealth) == 0x544);
+static_assert(offsetof(CPed, m_fArmour) == 0x548);
 
 namespace
 {
@@ -87,6 +88,27 @@ bool sdk::WritePlayerHealth(float value) noexcept
     if (!player || !Accessible(&player->m_fHealth, sizeof(float), true))
         return false;
     player->m_fHealth = value;
+    return true;
+}
+
+bool sdk::ReadPlayerArmour(float* armour) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return false;
+    const CPed* player = FindCurrentPlayer();
+    if (!player || !Accessible(&player->m_fArmour, sizeof(float))) return false;
+    *armour = player->m_fArmour;
+    return std::isfinite(*armour) && *armour >= 0;
+}
+
+bool sdk::WritePlayerArmour(float value) noexcept
+{
+    // This API deliberately supports the standard 0..100 armour range.
+    float health = 0, maximum = 0;
+    if (!std::isfinite(value) || value < 0 || value > 100
+        || !ReadPlayerHealth(&health, &maximum) || health <= 0) return false;
+    CPed* player = FindCurrentPlayer();
+    if (!player || !Accessible(&player->m_fArmour, sizeof(float), true)) return false;
+    player->m_fArmour = value;
     return true;
 }
 

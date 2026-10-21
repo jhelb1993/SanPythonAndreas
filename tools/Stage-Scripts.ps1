@@ -12,6 +12,7 @@ Copy-Item -Force (Join-Path $source 'scripts\example_heal.py') (Join-Path $scrip
 Copy-Item -Force (Join-Path $source 'scripts\diagnose_f5.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_position.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_teleport.py') $scripts
+Copy-Item -Force (Join-Path $source 'scripts\example_armour.py') $scripts
 $main = Join-Path $scripts 'main.py'
 if (-not (Test-Path -LiteralPath $main)) {
     Copy-Item (Join-Path $source 'scripts\main.py') $main

@@ -81,14 +81,15 @@ Lesbare `player.position` und ein separat ladbares `example_position.py` für F6
 sind implementiert (API 3). Python-Tests bestanden; Funktion im Spiel vom Nutzer
 bestätigt. API 4 ergänzt Teleportieren im aktuellen Interior; Funktion vom Nutzer bestätigt.
 API 5 ergänzt Heading; Build, native Tests, Paketprüfung und Spieltest wurden vom Nutzer bestätigt.
-API 6 ergänzt Interior-Wechsel beim Teleportieren; Spielabnahme dafür steht noch aus.
+API 6 ergänzt Interior-Wechsel beim Teleportieren; vom Nutzer im Spiel bestätigt.
+API 7 ergänzt Rüstung; Spielabnahme steht noch aus.
 
 - [x] Spielerposition lesen; F6-Beispiel zeigt Koordinaten an.
 - [x] Position setzen und Teleportieren im aktuellen Interior (vom Nutzer bestätigt).
 - [x] Richtung/Heading lesen und setzen: API 5 vom Nutzer im Spiel bestätigt.
 - [x] Interior lesen und versehentlichen Wechsel beim Teleportieren verhindern.
-- [ ] Interior-Wechsel mit Weltbereich, Streaming und Kamera: API 6 implementiert, Spielabnahme offen. Shop-/Missionsaktivierung und Portalzuordnung bleiben separat.
-- [ ] Rüstung lesen und setzen.
+- [x] Interior-Wechsel mit Weltbereich, Streaming und Kamera: API 6 vom Nutzer im Spiel bestätigt. Shop-/Missionsaktivierung und Portalzuordnung bleiben separat.
+- [ ] Rüstung lesen und setzen: API 7 implementiert, Spielabnahme offen.
 - [ ] Geld und Fahndungslevel lesen und verändern.
 - [ ] Maximale Gesundheit mit den Spielerstatistiken abgleichen.
 - [ ] Waffen geben, auswählen und entfernen.

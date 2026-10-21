@@ -11,6 +11,19 @@ namespace
 {
     bool onThread = true, ready = true;
     float health = 25, maximum = 100;
+    float armour = 10;
+    BOOL __cdecl ReadArmour(float* value)
+    {
+        if (!ready) return FALSE;
+        *value = armour;
+        return TRUE;
+    }
+    BOOL __cdecl WriteArmour(float value)
+    {
+        if (!ready || health <= 0 || !std::isfinite(value) || value < 0 || value > 100) return FALSE;
+        armour = value;
+        return TRUE;
+    }
     std::string lastText;
     bool positionAvailable = true;
     float positionX = 12.5f, positionY = -34.0f, positionZ = 8.0f;
@@ -67,7 +80,7 @@ namespace
         return 0;
     }
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
-        KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading};
+        KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -76,7 +89,7 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
-    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
+    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; armour = 10; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
     module.def("_test_thread", [](bool value) { onThread = value; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });

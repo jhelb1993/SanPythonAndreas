@@ -139,6 +139,24 @@ PYBIND11_MODULE(sanandreas, module)
         return host->hasFocus() != FALSE;
     });
     module.def("_player_health", &PlayerHealth);
+    module.def("_player_armour", [] {
+        RequireGameThread();
+        float value = 0;
+        if (!host->playerArmour(&value))
+            throw std::runtime_error("no active player or armour unavailable");
+        return value;
+    });
+    module.def("_set_player_armour", [](py::handle value) {
+        RequireGameThread();
+        if (py::isinstance<py::bool_>(value))
+            throw py::type_error("armour must be a number, not bool");
+        const double number = PyFloat_AsDouble(value.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (!std::isfinite(number) || number < 0 || number > 100)
+            throw py::value_error("armour must be finite and between 0 and 100");
+        if (!host->setPlayerArmour(static_cast<float>(number)))
+            throw std::runtime_error("no active living player or armour cannot be changed");
+    }, py::arg("value"));
     module.def("_player_position", &PlayerPosition);
     module.def("_player_heading", [] {
         RequireGameThread();

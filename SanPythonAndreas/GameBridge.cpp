@@ -55,9 +55,17 @@ namespace
     {
         return sdk::ReadPlayerPosition(x, y, z) ? TRUE : FALSE;
     }
+    BOOL __cdecl HostPlayerArmour(float* value)
+    {
+        return sdk::ReadPlayerArmour(value) ? TRUE : FALSE;
+    }
+    BOOL __cdecl HostSetPlayerArmour(float value)
+    {
+        return sdk::WritePlayerArmour(value) ? TRUE : FALSE;
+    }
     const SpaHostApi hostApi{sizeof(SpaHostApi), HostReady, HostThread,
         game::ShowText, game::StartupLog, HostKeyDown, HostFocus,
-        HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading};
+        HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading, HostPlayerArmour, HostSetPlayerArmour};
     SpaTickFunction runtimeTick = nullptr;
     bool runtimeAttempted = false;
 
@@ -172,7 +180,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 6; Python 3.11 + SDK + pybind11 + interior teleport ---");
+    StartupLog("--- ASI loaded: host API 7; Python 3.11 + SDK + pybind11 + armour ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 6
+        self.api._host_api_version = 7
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -30,6 +30,9 @@ class RuntimeTests(unittest.TestCase):
         self.api._has_focus = lambda: self.focus
         self.api._player_health = lambda: tuple(self.stats) if self.stats is not None else None
         self.api._set_player_health = self.set_health
+        self.armour = 10.0
+        self.api._player_armour = self.read_armour
+        self.api._set_player_armour = self.set_armour
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -58,6 +61,16 @@ class RuntimeTests(unittest.TestCase):
         else:
             sys.modules["sanandreas"] = self.previous_api
         self.temp.cleanup()
+
+    def read_armour(self):
+        if self.stats is None:
+            raise RuntimeError("no active player")
+        return self.armour
+
+    def set_armour(self, value):
+        if self.stats is None or self.stats[0] <= 0:
+            raise RuntimeError("no active living player")
+        self.armour = value
 
     def set_heading(self, value):
         self.heading = value
@@ -258,7 +271,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 6
+        self.api._host_api_version = 7
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -331,6 +344,39 @@ raise RuntimeError('broken')
             self.assertEqual(self.interior, 6)
             self.assertEqual(self.position, (12.5, -34, 8))
             self.assertEqual(self.heading, 45)
+        self.assertNotIn("Disabled failing callback", self.log())
+
+    def test_armour_view_rechecks_current_player(self):
+        player = self.api.player()
+        self.assertEqual(player.armour, 10)
+        player.armour = 75
+        self.assertEqual(self.armour, 75)
+        self.stats = None
+        with self.assertRaises(RuntimeError):
+            _ = player.armour
+        with self.assertRaises(RuntimeError):
+            player.armour = 100
+        self.stats = [50, 100]
+        self.armour = 20
+        self.assertEqual(player.armour, 20)
+
+    def test_f9_armour_example_skips_missing_dead_and_held_key(self):
+        self.script((RUNTIME / "scripts" / "example_armour.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        for stats in (None, [0, 100], [25, 100]):
+            self.stats = stats
+            self.keys.add(0x78)
+            self.runtime._tick(True)
+            self.keys.clear()
+            self.runtime._tick(True)
+        self.assertEqual(self.armour, 100)
+        self.assertEqual(self.output, ["Ruestung aufgefuellt!"])
+        self.keys.add(0x78)
+        self.runtime._tick(True)
+        self.armour = 50
+        self.runtime._tick(True)
+        self.assertEqual(self.armour, 50)
+        self.assertEqual(self.output.count("Ruestung aufgefuellt!"), 2)
         self.assertNotIn("Disabled failing callback", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

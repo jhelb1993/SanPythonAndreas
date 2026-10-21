@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.6.0-dev.1`.
-- Aktuelle interne Host-API: Version `6` (Interior-Wechsel beim Teleportieren).
+- Aktuelle Paketversion: `0.7.0-dev.1`.
+- Aktuelle interne Host-API: Version `7` (Rüstung lesen und setzen).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 15 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 17 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `6` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `7` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -129,7 +129,7 @@ Abnahme: F7 zu Fuß speichern, drehen/weggehen, F8 und Ausrichtung kontrollieren
 dasselbe als Fahrer wiederholen. Passagier-Speichern muss abgewiesen werden,
 ohne F7/F8 zu deaktivieren. Neigung/Rollen werden nicht gespeichert.
 
-## Interior-Teleport (API 6, Spielabnahme offen)
+## Interior-Teleport (API 6, vom Nutzer bestätigt)
 
 Gleiche ABI-Struktur, neue Semantik: `interior` wählt nun den Zielbereich;
 Status 2 bedeutet laufender Türübergang. API-Version erhöht, damit alte Hosts
@@ -154,4 +154,22 @@ und [EntryExitManager](https://github.com/gta-reversed/gta-reversed/blob/master/
 Automatisierte Tests simulieren Bereichswechsel und Übergangsablehnung;
 Streaming, Kamera und Kollisionsverhalten müssen im Spiel geprüft werden.
 Prüfstand API 6: Release/x86-Build, 15 native Binding-Tests, Paketprüfung und
-21 Python-Runtime-Tests bestanden. Die Spielabnahme bleibt offen.
+21 Python-Runtime-Tests bestanden. Der Nutzer hat die Funktion im Spiel bestätigt.
+
+## Rüstung (API 7, Spielabnahme offen)
+
+ABI um `playerArmour(float*)` und `setPlayerArmour(float)` erweitert.
+`GtaSdk.cpp` verwendet `CPed::m_fArmour`, mit Layoutprüfung auf Offset 0x548.
+Bei jedem Zugriff werden aktueller Spieler, Spielzustand und Spielthread geprüft.
+Gelesen werden endliche, nichtnegative Werte; der Setter unterstützt ausdrücklich
+den Standardbereich 0..100, unabhängig von möglichen erhöhten Spiellimits.
+`bool`, falsche Typen, NaN und unendliche Werte werden abgewiesen. Schreiben
+setzt einen lebenden Spieler voraus. Gesundheit bleibt unverändert.
+
+`example_armour.py`: F9 setzt Rüstung auf 100 und protokolliert den gelesenen Wert.
+Native Tests prüfen Grenzen, Konvertierung, fehlenden/toten Spieler und Thread;
+Runtime-Tests prüfen Spielerwechsel und das F9-Beispiel einschließlich Halten.
+Spielabnahme: Rüstung verlieren, F9 drücken, HUD und Log kontrollieren; auch
+Pause, Fokuswechsel, Fahrzeug und fehlenden/toten Spieler prüfen.
+Prüfstand API 7: Release/x86-Build, 17 native Tests, 23 Python-Tests und
+Paketprüfung bestanden. Spielabnahme offen.

@@ -313,7 +313,33 @@ F8 bleibt danach nutzbar. Shop- und Missionsskripte werden nicht aktiviert,
 eine zum Zielgebäude passende Portal-/Radar-Zuordnung wird nicht rekonstruiert.
 Keine Bodensuche oder Hindernisprüfung; Fahrzeugziele brauchen genügend Platz.
 
-ASI und kompletten Datenordner gemeinsam aktualisieren. Spielabnahme offen:
+API-6-Spielabnahme vom Nutzer bestätigt. Geprüft werden sollte weiterhin:
 draußen F7, Gebäude betreten, nach abgeschlossenem Türübergang F8; danach
 drinnen F7, Gebäude verlassen und F8. Auch Interior A nach B sowie anschließendes
 normales Verlassen durch die Tür, Kamera, sichtbare Umgebung und Kollision prüfen.
+
+## Rüstung lesen und setzen (API 7)
+
+Paket `0.7.0-dev.1`, Host-API 7 ergänzt `player.armour`:
+
+```python
+player = sa.player()
+if player is not None and player.health > 0:
+    print(player.armour)
+    player.armour = 100
+```
+
+Schreiben erlaubt endliche Zahlen von 0 bis 100; `bool`, NaN, Unendlich und
+Werte außerhalb dieses Bereichs werden abgewiesen. Lesen liefert den aktuellen
+Rüstungswert, auch wenn andere Spielmechaniken höhere Werte erlauben. Schreiben
+benötigt einen lebenden Spieler; Gesundheit wird nicht verändert. Eine gespeicherte
+Spieleransicht löst den aktuellen Spieler bei jedem Zugriff neu auf.
+
+Für das F9-Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_armour
+```
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. F9 füllt die Rüstung
+auf 100 auf. Spieltest dieser Erweiterung steht noch aus.

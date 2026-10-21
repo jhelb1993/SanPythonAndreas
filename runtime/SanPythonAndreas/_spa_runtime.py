@@ -6,7 +6,7 @@ import traceback
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 6
+BOOTSTRAP_API_VERSION = 7
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -100,6 +100,15 @@ class Player:
     @health.setter
     def health(self, value):
         sa._set_player_health(value)
+
+    @property
+    def armour(self):
+        """Current armour; setting supports finite values from 0 to 100."""
+        return sa._player_armour()
+
+    @armour.setter
+    def armour(self, value):
+        sa._set_player_armour(value)
 
     @property
     def position(self):
