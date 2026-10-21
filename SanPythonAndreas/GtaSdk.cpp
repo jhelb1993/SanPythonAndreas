@@ -15,6 +15,11 @@
 #include "RuntimeApi.h"
 #include <CBaseModelInfo.h>
 #include <CVehicleModelInfo.h>
+#include <CPedIntelligence.h>
+#include <CTaskComplexLeaveCar.h>
+#include <CTaskSimpleCarSetPedInAsDriver.h>
+#include <CTaskSimpleCarSetPedInAsPassenger.h>
+#include "PlayerSeatWarp.h"
 #include <array>
 #include <CHeli.h>
 #include <CPool.h>
@@ -289,6 +294,28 @@ namespace
             entity = vehicle;
         }
         return 0;
+    }
+
+    bool PedChangingVehicle(const CPed* player) noexcept
+    {
+        switch (player->m_nPedState)
+        {
+        case PEDSTATE_OPEN_DOOR: case PEDSTATE_CARJACK: case PEDSTATE_DRAGGED_FROM_CAR:
+        case PEDSTATE_ENTER_CAR: case PEDSTATE_STEAL_CAR: case PEDSTATE_EXIT_CAR:
+            return true;
+        default: return false;
+        }
+    }
+
+    bool StationaryAutomobile(const CVehicle* vehicle) noexcept
+    {
+        const auto& speed = vehicle->m_vecMoveSpeed;
+        return vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE
+            && !vehicle->m_pTractor && !vehicle->m_pTrailer
+            && !vehicle->m_nNumGettingIn && !vehicle->m_nGettingInFlags && !vehicle->m_nGettingOutFlags
+            && std::isfinite(vehicle->m_fHealth) && vehicle->m_fHealth > 0
+            && std::isfinite(speed.x) && std::isfinite(speed.y) && std::isfinite(speed.z)
+            && speed.x * speed.x + speed.y * speed.y + speed.z * speed.z <= 0.0001f;
     }
 }
 
@@ -599,6 +626,106 @@ void sdk::CleanupOwnedVehicles() noexcept
         }
         UnregisterVehicle(owner);
     }
+}
+
+int sdk::EnterPlayerVehicle(DWORD token, int seat) noexcept
+{
+    if (!LivingPlayer()) return 1;
+    auto* player = FindCurrentPlayer();
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (!Accessible(player, sizeof(CPed), true) || !player->m_pIntelligence
+        || !Accessible(player->m_pIntelligence, sizeof(CPedIntelligence), true)) return 1;
+    if (player->m_nPedFlags.bInVehicle || PedChangingVehicle(player)
+        || player->m_nPedFlags.bIsBeingArrested
+        || static_cast<unsigned int>(player->m_nSavedWeapon) != 55u
+        || reinterpret_cast<bool (__cdecl*)()>(0x43E400)()
+        || reinterpret_cast<bool (__thiscall*)(CPedIntelligence*)>(0x602350)(player->m_pIntelligence)
+        || reinterpret_cast<void* (__thiscall*)(CPedIntelligence*)>(0x601110)(player->m_pIntelligence))
+        return 3;
+    if (!StationaryAutomobile(vehicle)) return 4;
+    if (seat < -1 || seat > 2
+        || (seat == -1 ? vehicle->m_pDriver != nullptr
+            : seat >= vehicle->m_nMaxPassengers || vehicle->m_apPassengers[seat] != nullptr)) return 5;
+    if (vehicle->m_nAreaCode != player->m_nAreaCode) return 7;
+    SpaPlayerVehicle snapshot{};
+    float x = 0, y = 0, z = 0;
+    if (!ReadVehicleData(vehicle, &snapshot) || !ReadPlayerPosition(&x, &y, &z)) return 1;
+    const double dx = snapshot.x - x, dy = snapshot.y - y, dz = snapshot.z - z;
+    if (dx * dx + dy * dy + dz * dz > 2500) return 8;
+    // The passenger task takes a door ID, rather than a passenger index.
+    const int door = seat == -1 ? 10
+        : reinterpret_cast<int (__cdecl*)(const CVehicle*, int)>(0x64F190)(vehicle, seat);
+    if (door < 0 || (seat >= 0
+        && reinterpret_cast<int (__cdecl*)(const CVehicle*, int)>(0x64F1E0)(vehicle, door) != seat)) return 5;
+    // Run the same immediate seat tasks without SetPedInCarDirect's additional
+    // autonomous DriveWander task. ClearTasks(true, false) then uses GTA's normal
+    // in-car task/event path and preserves secondary tasks.
+    const auto restoreControl = [player] {
+        reinterpret_cast<void (__thiscall*)(CPedIntelligence*, bool, bool)>(0x601420)(
+            player->m_pIntelligence, true, false);
+    };
+    const auto destroyTask = [](auto* task) {
+        auto** table = *reinterpret_cast<void***>(task);
+        reinterpret_cast<void (__thiscall*)(void*, unsigned int)>(table[0])(task, 0);
+    };
+    bool completed;
+    if (seat == -1)
+    {
+        using Task = CTaskSimpleCarSetPedInAsDriver;
+        completed = spa::WarpPlayerSeat<Task>(
+            [vehicle](Task* task) {
+                reinterpret_cast<void (__thiscall*)(Task*, CVehicle*, CTaskUtilityLineUpPedWithCar*)>(0x6470E0)(
+                    task, vehicle, nullptr);
+            },
+            [player](Task* task) {
+                return reinterpret_cast<bool (__thiscall*)(Task*, CPed*)>(0x64B950)(task, player);
+            }, destroyTask, restoreControl);
+    }
+    else
+    {
+        using Task = CTaskSimpleCarSetPedInAsPassenger;
+        completed = spa::WarpPlayerSeat<Task>(
+            [vehicle, door](Task* task) {
+                reinterpret_cast<void (__thiscall*)(Task*, CVehicle*, int, CTaskUtilityLineUpPedWithCar*)>(0x646FE0)(
+                    task, vehicle, door, nullptr);
+            },
+            [player](Task* task) {
+                return reinterpret_cast<bool (__thiscall*)(Task*, CPed*)>(0x64B5D0)(task, player);
+            }, destroyTask, restoreControl);
+    }
+    if (!completed) return 3;
+    return player->m_nPedFlags.bInVehicle && player->m_pVehicle == vehicle
+        && (seat == -1 ? vehicle->m_pDriver == player : vehicle->m_apPassengers[seat] == player) ? 0 : 3;
+}
+
+int sdk::LeavePlayerVehicle() noexcept
+{
+    if (!LivingPlayer()) return 1;
+    auto* player = FindCurrentPlayer();
+    if (!Accessible(player, sizeof(CPed), true) || !player->m_pIntelligence
+        || !Accessible(player->m_pIntelligence, sizeof(CPedIntelligence), true)) return 1;
+    if (reinterpret_cast<bool (__cdecl*)()>(0x43E400)() || player->m_nPedFlags.bIsBeingArrested) return 3;
+    // An already scheduled leave task is idempotent, including before its first frame.
+    using FindTask = CTask* (__thiscall*)(CPedIntelligence*, int);
+    if (reinterpret_cast<FindTask>(0x600EE0)(player->m_pIntelligence, TASK_COMPLEX_LEAVE_CAR)) return 0;
+    if (PedChangingVehicle(player)) return 3;
+    if (!player->m_nPedFlags.bInVehicle) return 0;
+    SpaPlayerVehicle snapshot{};
+    if (ReadPlayerVehicle(&snapshot) != 1) return 1;
+    auto* vehicle = player->m_pVehicle;
+    if (!StationaryAutomobile(vehicle)) return 4;
+    const int door = reinterpret_cast<int (__cdecl*)(const CVehicle*, const CPed*)>(0x64F110)(vehicle, player);
+    if (door < 0) return 4;
+    // Allocate in GTA's task pool; the task manager owns this object after submission.
+    auto* task = reinterpret_cast<CTaskComplexLeaveCar* (__cdecl*)(unsigned int)>(0x61A5A0)(
+        sizeof(CTaskComplexLeaveCar));
+    if (!task) return 6;
+    reinterpret_cast<void (__thiscall*)(CTaskComplexLeaveCar*, CVehicle*, int, int, bool, bool)>(0x63B8C0)(
+        task, vehicle, door, 0, true, false);
+    reinterpret_cast<void (__thiscall*)(CTaskManager*, CTask*, int, bool)>(0x681AF0)(
+        &player->m_pIntelligence->m_TaskMgr, task, TASK_PRIMARY_PRIMARY, false);
+    return 0;
 }
 
 int sdk::RequestModel(int model, DWORD* token) noexcept

@@ -58,5 +58,11 @@ struct SpaHostApi
     // remove: 0 success, 1 inactive, 2 invalid handle, 3 not script-owned, 4 occupied/attached/transition.
     int (__cdecl* removeVehicle)(DWORD);
     void (__cdecl* cleanupOwnedVehicles)(); // delete empty; hand occupied/attached cars back to GTA
+    // Seats: -1 driver, 0..2 passenger indices (if supported by model).
+    // Status: 0 success, 1 unavailable/dead, 2 invalid handle, 3 player busy,
+    // 4 unsupported/moving/busy car, 5 occupied/nonexistent seat, 6 task allocation,
+    // 7 different interior, 8 farther than 50 metres.
+    int (__cdecl* enterPlayerVehicle)(DWORD, int);
+    int (__cdecl* leavePlayerVehicle)(); // animated request; on foot is a no-op
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

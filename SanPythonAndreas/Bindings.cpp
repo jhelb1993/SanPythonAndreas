@@ -58,6 +58,22 @@ namespace
             throw std::runtime_error("no active player or heading unavailable (setting requires a living player)");
     }
 
+    void VehicleSeatStatus(int status)
+    {
+        switch (status)
+        {
+        case 0: return;
+        case 2: throw InvalidVehicle("vehicle was removed or its handle closed");
+        case 3: throw std::runtime_error("player is busy: finish entry/exit, leave the current vehicle, or remove the jetpack");
+        case 4: throw std::runtime_error("requires a stationary, healthy normal car without attachments or entry/exit");
+        case 5: throw py::value_error("seat is occupied or unavailable on this vehicle");
+        case 6: throw std::runtime_error("GTA task pool is full");
+        case 7: throw std::runtime_error("player and vehicle must be in the same interior");
+        case 8: throw std::runtime_error("vehicle must be within 50 metres");
+        default: throw std::runtime_error("vehicle seating requires an active living player");
+        }
+    }
+
     void SetPlayerHealth(py::handle value)
     {
         RequireGameThread();
@@ -245,6 +261,20 @@ PYBIND11_MODULE(sanandreas, module)
     module.def("_cleanup_owned_vehicles", [] {
         RequireGameThread();
         host->cleanupOwnedVehicles();
+    });
+    module.def("_enter_player_vehicle", [](py::handle token, py::handle seat) {
+        RequireGameThread();
+        if (py::isinstance<py::bool_>(seat) || !py::isinstance<py::int_>(seat))
+            throw py::type_error("seat must be an integer, not bool");
+        const long index = PyLong_AsLong(seat.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (index < -1 || index > 2) throw py::value_error("seat must be -1 (driver) or 0..2 (passenger)");
+        VehicleSeatStatus(host->enterPlayerVehicle(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), static_cast<int>(index)));
+    });
+    module.def("_leave_player_vehicle", [] {
+        RequireGameThread();
+        VehicleSeatStatus(host->leavePlayerVehicle());
     });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {

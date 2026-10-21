@@ -274,6 +274,21 @@ class Vehicle:
 
 class Player:
     """View of the current player. Every access rechecks game state and thread."""
+    def enter_vehicle(self, vehicle: Vehicle, *, seat: int = -1) -> None:
+        """Immediately warp into a free seat: -1 driver, 0..2 passengers.
+
+        Normal stationary cars only, same interior, within 50 metres.
+        Requires a living player on foot, outside jetpack/entry/exit/door
+        transitions. Seat availability depends on model. Never evicts occupants.
+        """
+        ...
+    def leave_vehicle(self) -> None:
+        """Request animated exit from a stationary normal car; on foot is a no-op.
+
+        Completion is asynchronous. Wait until in_vehicle is False before removing
+        the car. Existing leave requests are idempotent; GTA may delay/interfere.
+        """
+        ...
     @property
     def health(self) -> float: ...
     @health.setter

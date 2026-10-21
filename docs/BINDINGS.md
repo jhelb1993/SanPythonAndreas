@@ -490,3 +490,46 @@ Repeated C presses do not accumulate cars. The user confirmed spawning and remov
 the vehicle in-game. Release/x86 build, 79 Python tests, 38 native binding tests and
 bundle verification passed. Individual reset/error scenarios still need separate
 in-game verification.
+
+## Player vehicle seating (API 18)
+
+`player.enter_vehicle(vehicle, *, seat=-1)` warps the living player from on foot
+into a free seat of a checked vehicle handle. -1 is driver; 0 is front passenger;
+1/2 are rear passenger indices where supported. Occupants are never evicted.
+The car must be healthy, stationary (speed magnitude at most 0.01 GTA units),
+a normal automobile, unattached, within 50 metres and in the same interior.
+Entry/exit, door transitions, jetpack and arrest states are rejected.
+
+The first implementation used `CCarEnterExit::SetPedInCarDirect` (0x650280).
+The user reported automatic driving and loss of player control: that routine
+adds an autonomous DriveWander task in its driver branch, as shown in the
+[gta-reversed implementation](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/CarEnterExit.cpp).
+
+Version 0.18.0-dev.2 instead runs only the immediate GTA seat task:
+`CTaskSimpleCarSetPedInAsDriver` (constructor 0x6470E0, ProcessPed 0x64B950) or
+`CTaskSimpleCarSetPedInAsPassenger` (0x646FE0 / 0x64B5D0).
+The temporary task is marked as a warp and destroyed after processing, including
+its vehicle reference; no autonomous driving task is installed.
+`CPedIntelligence::ClearTasks(true, false)` (0x601420) then selects GTA's normal
+in-car task through its event path, preserving secondary tasks. The common
+execution helper has native tests for control restoration, failed processing
+and temporary reference cleanup. GTA input/control behavior still needs a
+repeat game test.
+
+Passenger tasks take a door ID: indices are mapped using
+ComputeTargetDoorToEnterAsPassenger and checked through
+ComputePassengerIndexFromCarDoor. Occupant pointers are checked before success.
+
+`player.leave_vehicle()` submits a GTA `CTaskComplexLeaveCar` for normal animated
+exit from a stationary, unattached automobile. GTA owns the task allocation after
+submission. Repeated pending requests and calls while on foot are idempotent.
+Completion is asynchronous and can be delayed or interrupted by GTA; use
+`player.in_vehicle` to observe it. Removing an occupied car remains rejected.
+
+`example_spawn_vehicle.py`: C creates, E puts the player in the driver seat,
+Q requests exit and D removes the empty car. README and editor stubs include the
+same API. The first Release/x86 build passed 81 Python tests, 41 native binding
+tests and bundle verification; these did not cover GTA's autonomous-driving
+side effect. The control fix requires renewed game acceptance.
+Version 0.18.0-dev.2 passed Release/x86 build, 81 Python tests, 43 native tests
+and bundle verification.

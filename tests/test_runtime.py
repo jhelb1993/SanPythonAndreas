@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 17
+        self.api._host_api_version = 18
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -82,6 +82,10 @@ class RuntimeTests(unittest.TestCase):
         self.api._spawn_vehicle = self.spawn_vehicle
         self.api._remove_vehicle = self.remove_vehicle
         self.api._cleanup_owned_vehicles = self.cleanup_owned_vehicles
+        self.api._enter_player_vehicle = self.enter_vehicle
+        self.api._leave_player_vehicle = self.leave_vehicle
+        self.exit_pending = False
+        self.seat_busy = False
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -233,6 +237,34 @@ class RuntimeTests(unittest.TestCase):
             self.invalid_vehicle_handles.update(
                 key for key, value in self.vehicle_handles.items() if value == entity)
         self.owned_vehicles.clear()
+
+    def enter_vehicle(self, token, seat):
+        self.require_game_thread()
+        if isinstance(seat, bool) or not isinstance(seat, int):
+            raise TypeError("seat must be int")
+        if seat < -1 or seat > 2 or self.seat_busy:
+            raise ValueError("seat unavailable")
+        info = self.vehicle_info(token)
+        if self.vehicle_data is not None:
+            raise RuntimeError("already in a vehicle")
+        self.current_vehicle_id = self.vehicle_handles[token]
+        self.vehicle_data = types.SimpleNamespace(
+            model_id=info.model_id, health=info.health, position=info.position, is_driver=seat == -1)
+        self.vehicle_objects[self.current_vehicle_id] = self.vehicle_data
+        self.busy_owned_vehicles.add(self.current_vehicle_id)
+
+    def leave_vehicle(self):
+        self.require_game_thread()
+        if self.stats is None or self.stats[0] <= 0:
+            raise RuntimeError("no living player")
+        if self.vehicle_data is not None:
+            self.exit_pending = True
+
+    def finish_vehicle_exit(self):
+        if self.exit_pending:
+            self.busy_owned_vehicles.discard(self.current_vehicle_id)
+            self.vehicle_data = None
+            self.exit_pending = False
 
     def read_weapon(self):
         if self.stats is None:
@@ -497,7 +529,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 17
+        self.api._host_api_version = 18
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1564,6 +1596,63 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_player_seating_driver_passenger_and_animated_exit(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (10, 20, 30))
+        p = self.api.player()
+        p.leave_vehicle()
+        p.enter_vehicle(car)
+        self.assertTrue(p.in_vehicle)
+        self.assertTrue(p.is_driver)
+        self.assertTrue(car.snapshot.is_driver)
+        with self.assertRaises(RuntimeError):
+            p.enter_vehicle(car, seat=0)
+        p.leave_vehicle()
+        p.leave_vehicle()
+        self.assertTrue(p.in_vehicle)
+        with self.assertRaises(RuntimeError):
+            car.remove()
+        self.finish_vehicle_exit()
+        self.assertFalse(p.in_vehicle)
+        p.enter_vehicle(car, seat=0)
+        self.assertTrue(p.in_vehicle)
+        self.assertFalse(p.is_driver)
+        p.leave_vehicle()
+        self.finish_vehicle_exit()
+        car.remove()
+        self.assertTrue(car.closed)
+
+    def test_player_seating_rejects_bad_handles_seats_and_cleanup(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (0, 0, 0))
+        p = self.api.player()
+        for value in (None, object(), 123):
+            with self.assertRaises(TypeError):
+                p.enter_vehicle(value)
+        for seat in (True, 1.0, "0"):
+            with self.assertRaises(TypeError):
+                p.enter_vehicle(car, seat=seat)
+        for seat in (-2, 3):
+            with self.assertRaises(ValueError):
+                p.enter_vehicle(car, seat=seat)
+        self.seat_busy = True
+        with self.assertRaises(ValueError):
+            p.enter_vehicle(car)
+        self.seat_busy = False
+        self.runtime._cancelling = True
+        for call in (lambda: p.enter_vehicle(car), p.leave_vehicle):
+            with self.assertRaises(RuntimeError):
+                call()
+        self.runtime._cancelling = False
+        self.game_thread = False
+        for call in (lambda: p.enter_vehicle(car), p.leave_vehicle):
+            with self.assertRaises(RuntimeError):
+                call()
+        self.game_thread = True
+        car.close()
+        with self.assertRaises(self.api.InvalidVehicleError):
+            p.enter_vehicle(car)
+
     def test_owned_vehicle_close_does_not_delete_and_reset_cleans_up(self):
         self.script("pass")
         self.runtime._tick(True)
@@ -1630,6 +1719,14 @@ raise RuntimeError('broken')
             self.runtime._tick(True)
         self.assertEqual(len(self.owned_vehicles), 1)
         self.assertEqual(self.model_leases, {})
+        press("E")
+        self.assertTrue(self.api.player().is_driver)
+        press("Q")
+        self.assertTrue(self.exit_pending)
+        self.assertTrue(self.api.player().in_vehicle)
+        press("D")
+        self.assertEqual(len(self.owned_vehicles), 1)
+        self.finish_vehicle_exit()
         press("C")
         self.assertEqual(len(self.owned_vehicles), 1)
         self.busy_owned_vehicles.update(self.owned_vehicles)

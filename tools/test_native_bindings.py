@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 17)
+        self.assertEqual(sa._host_api_version, 18)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,83 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_seats_driver_passenger_and_delayed_exit(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._leave_player_vehicle()
+        sa._enter_player_vehicle(car, -1)
+        self.assertTrue(sa._player_vehicle().is_driver)
+        with self.assertRaises(RuntimeError):
+            sa._enter_player_vehicle(car, 0)
+        sa._leave_player_vehicle()
+        sa._leave_player_vehicle()
+        self.assertIsNotNone(sa._player_vehicle())
+        with self.assertRaises(RuntimeError):
+            sa._remove_vehicle(car)
+        sa._test_finish_vehicle_exit()
+        self.assertIsNone(sa._player_vehicle())
+        sa._enter_player_vehicle(car, 0)
+        self.assertFalse(sa._player_vehicle().is_driver)
+        sa._leave_player_vehicle()
+        sa._test_finish_vehicle_exit()
+        sa._remove_vehicle(car)
+        self.assertFalse(sa._vehicle_handle_valid(car))
+
+    def test_player_warp_restores_control_after_releasing_temporary_task(self):
+        result, restored, references, calls, failed = sa._test_player_seat_warp(True, False)
+        self.assertTrue(result)
+        self.assertTrue(restored)
+        self.assertEqual(references, 0)
+        self.assertEqual(calls, ["construct", "warp", "destroy", "restore_player_control"])
+        self.assertFalse(failed)
+
+    def test_failed_player_warp_releases_task_without_restoring_in_car_control(self):
+        for fail_processing in (False, True):
+            with self.subTest(fail_processing=fail_processing):
+                result, restored, references, calls, failed = sa._test_player_seat_warp(False, fail_processing)
+                self.assertFalse(result)
+                self.assertFalse(restored)
+                self.assertEqual(references, 0)
+                self.assertEqual(calls, ["construct", "warp", "destroy"])
+                self.assertEqual(failed, fail_processing)
+
+    def test_vehicle_seat_validation_and_host_rejections(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for seat in (True, 0.0, "0", None):
+            with self.assertRaises(TypeError):
+                sa._enter_player_vehicle(car, seat)
+        for seat in (-2, 3):
+            with self.assertRaises(ValueError):
+                sa._enter_player_vehicle(car, seat)
+        for status in (3, 4, 5, 6, 7, 8):
+            sa._test_seat_status(status)
+            with self.assertRaises(ValueError if status == 5 else RuntimeError):
+                sa._enter_player_vehicle(car, -1)
+            self.assertIsNone(sa._player_vehicle())
+        sa._test_seat_status(0)
+        sa._close_vehicle_handle(car)
+        with self.assertRaises(sa.InvalidVehicleError):
+            sa._enter_player_vehicle(car, -1)
+
+    def test_vehicle_seat_operations_reject_inactive_dead_and_wrong_thread(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._test_ready(False)
+        for call in (lambda: sa._enter_player_vehicle(car, -1), sa._leave_player_vehicle):
+            with self.assertRaises(RuntimeError):
+                call()
+        sa._test_ready(True)
+        sa._test_thread(False)
+        for call in (lambda: sa._enter_player_vehicle(car, -1), sa._leave_player_vehicle):
+            with self.assertRaises(RuntimeError):
+                call()
+        sa._test_thread(True)
+        sa._test_dead()
+        for call in (lambda: sa._enter_player_vehicle(car, -1), sa._leave_player_vehicle):
+            with self.assertRaises(RuntimeError):
+                call()
 
     def test_health_setter_rechecks_player_limit_after_stat_changes(self):
         sa._test_max_health(150)

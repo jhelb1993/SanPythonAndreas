@@ -142,12 +142,24 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
 - [ ] Position, Heading und Geschwindigkeit lesen/setzten.
 - [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten.
-- [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen.
+- [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 implementiert, Spielabnahme offen; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
 - [ ] Fahrzeugverlust und Zerstörung über Handles korrekt behandeln.
 
 Abnahme: Ein Beispiel erzeugt einen Infernus, setzt den Spieler hinein und
 entfernt das erzeugte Fahrzeug auf ausdrücklichen Aufruf wieder.
+
+API 18 ergänzt `Player.enter_vehicle(vehicle, seat=-1)` (sofortiges Einsetzen;
+0..2 für modellabhängige Beifahrerplätze) und `Player.leave_vehicle()`
+(animierter Ausstiegsauftrag, zu Fuß ohne Wirkung). Nur stehende normale Autos
+ohne Anhänger; Einsetzen erfordert denselben Innenbereich und höchstens 50 m
+Entfernung. Belegte Sitze werden nicht übernommen. Das Infernus-Beispiel nutzt
+E für den Fahrersitz und Q zum Aussteigen. Spielabnahme offen.
+Spieltest-Rückmeldung: E setzte zusätzlich eine KI-Fahraufgabe und blockierte die
+Spielersteuerung. 0.18.0-dev.2 ersetzt den Einstieg durch reine GTA-Sitzwechsel-
+Tasks mit anschließender normaler Spielersteuerung. Erneuter Spieltest offen.
+Prüfstand API 18 / 0.18.0-dev.2: Release/x86-Build, 81 Python-Tests, 43 native Binding-Tests
+und Paketprüfung bestanden.
 
 ## 7. Peds, Objekte und Welt
 

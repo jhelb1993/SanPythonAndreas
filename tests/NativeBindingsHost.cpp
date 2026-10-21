@@ -4,6 +4,9 @@
 #include "Bindings.h"
 #include "BuildInfo.h"
 #include "WeaponPolicy.h"
+#include "PlayerSeatWarp.h"
+#include <vector>
+#include <new>
 #include <array>
 #include <unordered_map>
 #include <string>
@@ -127,6 +130,33 @@ namespace
         for (const auto& owner : ownedVehicles)
             if (!owner.second) handleVehicles.erase(owner.first);
         ownedVehicles.clear();
+    }
+    int seatStatus = 0;
+    bool exitPending = false;
+    int __cdecl EnterVehicle(DWORD token, int seat)
+    {
+        if (!ready || health <= 0) return 1;
+        if (!VehicleValid(token)) return 2;
+        if (vehicleState == 1) return 3;
+        if (seatStatus) return seatStatus;
+        if (seat < -1 || seat > 2) return 5;
+        auto& handle = vehicleHandles.at(token);
+        currentVehicleId = handle.entity;
+        vehicleData = handleVehicles.at(currentVehicleId).data;
+        vehicleData.isDriver = seat == -1;
+        vehicleState = 1;
+        handleVehicles.at(currentVehicleId).data = vehicleData;
+        if (ownedVehicles.count(currentVehicleId)) ownedVehicles[currentVehicleId] = true;
+        return 0;
+    }
+    int __cdecl LeaveVehicle()
+    {
+        if (!ready || health <= 0) return 1;
+        if (exitPending) return 0;
+        if (vehicleState == 0) return 0;
+        if (seatStatus) return seatStatus;
+        exitPending = true; // request is asynchronous
+        return 0;
     }
     int __cdecl ReadVehicle(SpaPlayerVehicle* value)
     {
@@ -283,7 +313,7 @@ namespace
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
-        SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles};
+        SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -292,6 +322,41 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
+    module.def("_test_player_seat_warp", [](bool completed, bool failProcessing) {
+        struct Task { bool m_bWarpingInToCar; };
+        std::vector<std::string> calls;
+        int references = 0;
+        bool restored = false, result = false, failed = false;
+        try
+        {
+            result = spa::WarpPlayerSeat<Task>(
+                [&](Task* task) {
+                    new (task) Task{false};
+                    ++references;
+                    calls.emplace_back("construct");
+                },
+                [&](Task* task) {
+                    if (!task->m_bWarpingInToCar) throw std::runtime_error("warp flag missing");
+                    calls.emplace_back("warp");
+                    if (failProcessing) throw std::runtime_error("processing failed");
+                    return completed;
+                },
+                [&](Task* task) {
+                    --references;
+                    task->~Task();
+                    calls.emplace_back("destroy");
+                },
+                [&] {
+                    if (references != 0) throw std::runtime_error("temporary task reference leaked");
+                    restored = true;
+                    calls.emplace_back("restore_player_control");
+                });
+        }
+        catch (const std::runtime_error&) { failed = true; }
+        py::list sequence;
+        for (const auto& call : calls) sequence.append(call);
+        return py::make_tuple(result, restored, references, sequence, failed);
+    });
     module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; armour = 10; money = 500; wantedLevel = 1; wantedMaximum = 6; wantedBlocked = false; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
     module.def("_test_wanted_maximum", [](int value) { wantedMaximum = value; });
     module.def("_test_wanted_blocked", [](bool value) { wantedBlocked = value; });
@@ -317,6 +382,7 @@ void InstallTestControls(py::module_& module)
         vehicleData.x = x; vehicleData.y = y; vehicleData.z = z;
     });
     module.def("_test_reset_vehicle_handles", [] {
+        seatStatus = 0; exitPending = false;
         ownedVehicles.clear(); nextOwnedVehicle = 1000;
         handleVehicles.clear(); vehicleHandles.clear(); currentVehicleId = 1; nextVehicleToken = 0; failVehicleReference = false;
     });
@@ -342,6 +408,15 @@ void InstallTestControls(py::module_& module)
         ownedVehicles.at(vehicleHandles.at(token).entity) = busy;
     });
     module.def("_test_owned_vehicle_count", [] { return ownedVehicles.size(); });
+    module.def("_test_seat_status", [](int status) { seatStatus = status; });
+    module.def("_test_finish_vehicle_exit", [] {
+        if (!exitPending) return;
+        if (ownedVehicles.count(currentVehicleId)) ownedVehicles[currentVehicleId] = false;
+        vehicleData.isDriver = FALSE;
+        handleVehicles.at(currentVehicleId).data.isDriver = FALSE;
+        vehicleState = 0;
+        exitPending = false;
+    });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

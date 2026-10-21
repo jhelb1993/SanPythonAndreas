@@ -14,7 +14,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 17
+BOOTSTRAP_API_VERSION = 18
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -731,6 +731,24 @@ class Vehicle:
 class Player:
     """A view of the current player, resolved again on every property access."""
     __slots__ = ()
+
+    def enter_vehicle(self, vehicle, *, seat=-1):
+        """Warp into a free seat of a nearby stationary car: -1 driver, 0..2 passenger."""
+        sa._require_game_thread()
+        if _cancelling:
+            raise RuntimeError("cannot enter vehicles during cleanup or clock reset")
+        if not isinstance(vehicle, Vehicle):
+            raise TypeError("vehicle must be a Vehicle handle")
+        if vehicle.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        sa._enter_player_vehicle(vehicle._token, seat)
+
+    def leave_vehicle(self):
+        """Request animated exit from a stationary car; on foot is a no-op."""
+        sa._require_game_thread()
+        if _cancelling:
+            raise RuntimeError("cannot leave vehicles during cleanup or clock reset")
+        sa._leave_player_vehicle()
 
     @staticmethod
     def _stats():

@@ -188,7 +188,7 @@ def model_demo():
             p = player()
             spawned_vehicle = sa.spawn_vehicle(
                 model.model_id, p.position + sa.Vector3(5, 0, 1), heading=p.heading)
-            sa.show_text("Infernus spawned. D: remove (exit first).")
+            sa.show_text("Infernus spawned. E: driver, Q: exit, D: remove.")
             yield sa.wait(3)
         sa.show_text("Model lease released.")
     except (TimeoutError, RuntimeError, ValueError) as error:
@@ -227,6 +227,21 @@ def remove_spawned_vehicle():
         else:
             spawned_vehicle.close()
         spawned_vehicle = None
+
+
+@key("E")  # Warp into the spawned car: -1 driver, 0 front passenger, 1/2 rear.
+def enter_spawned_vehicle():
+    if spawned_vehicle is None:
+        sa.show_text("Spawn an Infernus with C first.")
+        return
+    player().enter_vehicle(spawned_vehicle, seat=-1)
+    # Requires a free seat, same interior, within 50 metres and a stationary car.
+
+
+@key("Q")  # Request normal exit animation. Stop the car first.
+def leave_vehicle():
+    player().leave_vehicle()
+    # Exit finishes in later frames; wait until in_vehicle is False before D.
 
 
 def read_script():
