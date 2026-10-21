@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 12
+        self.api._host_api_version = 13
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -360,7 +360,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 12
+        self.api._host_api_version = 13
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -803,6 +803,241 @@ raise RuntimeError('broken')
         self.assertEqual(len(self.runtime._timers), 1)
         press("Y")
         self.assertEqual(self.runtime._timers, {})
+        self.assertNotIn("Disabled failing", self.log())
+
+    def test_task_steps_wait_and_return_without_blocking(self):
+        self.script("pass")
+        calls = []
+        def work():
+            calls.append("start")
+            yield self.api.wait(1)
+            calls.append("second")
+            yield self.api.wait()
+            return 42
+        task = self.api.start_task(work())
+        self.assertEqual(calls, [])
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["start"])
+        self.game_ms += 999
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["start"])
+        self.game_ms += 1
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["start", "second"])
+        self.assertFalse(task.done)
+        self.runtime._tick(True)
+        self.assertTrue(task.done)
+        self.assertEqual(task.result, 42)
+        self.assertIsNone(task.error)
+        self.assertIsNone(task._generator)
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_task_cancel_runs_finally_once_and_releases_wait(self):
+        self.script("pass")
+        calls = []
+        def work():
+            try:
+                yield self.api.wait(100)
+                calls.append("must not resume")
+            finally:
+                calls.append("cleanup")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        task.cancel()
+        task.cancel()
+        self.game_ms += 100000
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["cleanup"])
+        self.assertTrue(task.done)
+        self.assertTrue(task.cancelled)
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+        self.assertEqual(self.runtime._claimed_generators, set())
+
+    def test_task_self_cancel_defers_close_until_step_returns(self):
+        self.script("pass")
+        calls = []
+        def work():
+            try:
+                task.cancel()
+                calls.append("current step")
+                yield self.api.wait()
+                calls.append("must not resume")
+            finally:
+                calls.append("cleanup")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["current step", "cleanup"])
+        self.assertTrue(task.done)
+        self.assertTrue(task.cancelled)
+        self.assertIsNone(task.error)
+
+    def test_task_errors_and_invalid_yields_do_not_stop_other_work(self):
+        self.script("pass")
+        calls = []
+        def invalid():
+            try:
+                yield None
+            finally:
+                calls.append("invalid cleanup")
+        def exits():
+            raise SystemExit("do not exit GTA")
+            yield
+        invalid_task = self.api.start_task(invalid())
+        exit_task = self.api.start_task(exits())
+        self.api.call_later(0, lambda: calls.append("other timer"))
+        self.runtime._tick(True)
+        self.assertEqual(calls, ["invalid cleanup", "other timer"])
+        self.assertIn("TypeError", invalid_task.error)
+        self.assertIn("SystemExit", exit_task.error)
+        self.assertTrue(invalid_task.done)
+        self.assertTrue(exit_task.done)
+
+    def test_task_cleanup_failure_is_logged_and_task_still_stops(self):
+        self.script("pass")
+        def work():
+            try:
+                yield self.api.wait(1)
+            finally:
+                raise RuntimeError("cleanup failed")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        task.cancel()
+        self.assertTrue(task.done)
+        self.assertIn("cleanup failed", task.error)
+        self.assertIn("Task cleanup failed", self.log())
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_task_cancel_before_start_does_not_enter_generator_body(self):
+        self.script("pass")
+        calls = []
+        def work():
+            try:
+                calls.append("start")
+                yield self.api.wait()
+            finally:
+                calls.append("cleanup")
+        task = self.api.start_task(work())
+        task.cancel()
+        self.runtime._tick(True)
+        self.assertEqual(calls, [])
+        self.assertTrue(task.done)
+
+    def test_task_game_clock_reset_closes_game_wait_but_preserves_real_wait(self):
+        self.script("pass")
+        calls = []
+        def work(clock):
+            try:
+                yield self.api.wait(10, clock=clock)
+                calls.append(clock)
+            finally:
+                calls.append(clock + " cleanup")
+        game = self.api.start_task(work("game"))
+        real = self.api.start_task(work("real"))
+        self.runtime._tick(True)
+        self.game_ms = 0
+        self.runtime._tick(False)
+        self.assertTrue(game.cancelled)
+        self.assertFalse(real.done)
+        self.assertEqual(calls, ["game cleanup"])
+        self.real_seconds = 10
+        self.runtime._tick(True)
+        self.assertTrue(real.done)
+        self.assertEqual(calls, ["game cleanup", "real", "real cleanup"])
+
+    def test_task_bulk_cleanup_cannot_schedule_orphan_work(self):
+        self.script("pass")
+        calls = []
+        def work():
+            try:
+                yield self.api.wait(10)
+            finally:
+                try:
+                    self.api.call_later(0, lambda: calls.append("orphan"))
+                except RuntimeError:
+                    calls.append("registration blocked")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.game_ms = 0
+        self.runtime._tick(False)
+        self.assertTrue(task.done)
+        self.assertEqual(calls, ["registration blocked"])
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_task_validation_duplicate_generator_and_thread_guard(self):
+        self.script("pass")
+        def work():
+            yield self.api.wait()
+        for value in (None, work, iter([1])):
+            with self.assertRaises(TypeError):
+                self.api.start_task(value)
+        generator = work()
+        task = self.api.start_task(generator)
+        with self.assertRaises(ValueError):
+            self.api.start_task(generator)
+        self.game_thread = False
+        with self.assertRaises(RuntimeError):
+            task.cancel()
+        other = work()
+        with self.assertRaises(RuntimeError):
+            self.api.start_task(other)
+        other.close()
+        self.game_thread = True
+        self.runtime._tick(True)
+        task.cancel()
+        with self.assertRaises(ValueError):
+            self.api.start_task(generator)
+        for value in (True, "1", None):
+            with self.assertRaises(TypeError):
+                self.api.wait(value)
+        for value in (-1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self.api.wait(value)
+        with self.assertRaises(ValueError):
+            self.api.wait(clock="wall")
+
+    def test_task_validates_direct_wait_tokens_and_script_failure_discards_tasks(self):
+        self.script("pass")
+        def work():
+            yield self.api.Wait(-1, "game")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.assertIn("ValueError", task.error)
+        self.script("import sanandreas as sa\ndef work():\n    yield sa.wait()\nsa.start_task(work())\nraise RuntimeError('broken')")
+        self.runtime._loaded = self.runtime._started = False
+        self.runtime._tick(True)
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_task_example_finishes_restarts_and_cancels(self):
+        self.script((RUNTIME / "scripts" / "example_tasks.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        press("G")
+        self.runtime._tick(True)
+        self.assertEqual(self.output[-1], "Task-Countdown: 3")
+        for text in ("Task-Countdown: 2", "Task-Countdown: 1", "Task fertig!"):
+            self.game_ms += 1000
+            self.runtime._tick(True)
+            self.assertEqual(self.output[-1], text)
+        self.assertEqual(self.runtime._tasks, {})
+        press("G")
+        self.runtime._tick(True)
+        press("G")
+        self.assertEqual(len(self.runtime._tasks), 1)
+        press("H")
+        self.assertEqual(self.output[-1], "Task abgebrochen.")
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+        self.assertIn("Task-Countdown aufgeraeumt", self.log())
         self.assertNotIn("Disabled failing", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

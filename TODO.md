@@ -106,16 +106,17 @@ kontrolliert zwischen zwei bekannten Positionen.
 
 API 12 implementiert abbrechbare Einmal-/Wiederholungstimer mit Spiel-/Echtzeit,
 Fehlerisolierung, 64-Aufrufe-Limit pro Frame und Diagnose langsamer Timer.
-Spielabnahme offen. Generator-/Coroutine-Tasks, asynchrones Streaming und
-vollständige Mod-Zuordnung folgen separat.
+Timer vom Nutzer im Spiel bestätigt. API 13 ergänzt kooperative Generator-Tasks
+mit wait(), Abbruch und finally-Cleanup; Spielabnahme offen. async/await,
+asynchrones Streaming und vollständige Mod-Zuordnung folgen separat.
 
-- [ ] Verzögerte und wiederholte Aufrufe anbieten: API 12 implementiert, Spielabnahme offen.
-- [ ] Kooperatives Warten ermöglichen, ohne den Spielthread zu blockieren.
+- [x] Verzögerte und wiederholte Aufrufe anbieten: API 12 vom Nutzer im Spiel bestätigt.
+- [ ] Kooperatives Warten ermöglichen, ohne den Spielthread zu blockieren: API 13 implementiert (Generatoren), Spielabnahme offen.
 - [x] Spielzeit und Echtzeit sowie Verhalten während Pause für Timer ausdrücklich festlegen.
-- [ ] Tasks abbrechen und dem verursachenden Skript zuordnen können.
+- [ ] Tasks abbrechen und dem verursachenden Skript zuordnen können: API 13 kann abbrechen und zeigt das Generator-Modul als owner; vollständige Mod-Lebensdauer folgt.
 - [ ] Modellanforderung mit Bereitschaftsprüfung, Timeout und Freigabe kapseln.
 - [ ] Hintergrundarbeit mit einer Queue für Rückgaben auf den Spielthread ermöglichen.
-- [ ] Task-Fehler isolieren und langsame Callbacks protokollieren: für Timer ab API 12 implementiert; kooperative Tasks folgen.
+- [ ] Task-Fehler isolieren und langsame Callbacks protokollieren: für Timer und Generator-Tasks ab API 13 implementiert, Task-Spielabnahme offen.
 
 Abnahme: Ein Countdown und eine Modellanforderung laufen ohne Ruckeln durch
 blockierende Warteschleifen; Abbruch und Timeout funktionieren.

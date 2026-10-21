@@ -193,7 +193,7 @@ und keine langen Datei-/Netzwerkzugriffe. Python-Worker dürfen `show_text()` ni
 direkt aufrufen. Fehlerhafte Callbacks werden protokolliert und deaktiviert;
 andere laufen weiter. Auch `SystemExit` wird abgefangen. Bei Fehlern beim Laden
 von `main.py` werden teilweise registrierte Callbacks verworfen. Nach Änderungen
-das Spiel neu starten; Hot Reload und kooperative Coroutine-Tasks fehlen noch.
+das Spiel neu starten; Hot Reload fehlt noch. Generator-Tasks sind ab API 13 verfügbar.
 
 ## GTA-Kompatibilität
 
@@ -552,7 +552,72 @@ import example_timers
 - R: Nachricht nach fünf Echtzeit-Sekunden planen.
 - Y: beide abbrechen.
 
-ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+API-12-Funktion vom Nutzer im Spiel bestätigt. Spieltest:
 Countdown während Pause anhalten lassen, Echtzeit-Timer über eine Pause hinweg
 prüfen und mit Y vor Ablauf abbrechen. Wiederholt starten darf keine doppelten
-Timer hinterlassen. Kooperative Tasks und asynchrones Modellladen folgen separat.
+Timer hinterlassen. Generator-Tasks folgen in API 13; asynchrones Modellladen
+ist weiterhin offen.
+
+## Kooperative Generator-Tasks (API 13)
+
+Paket `0.13.0-dev.1`, Host-API 13:
+
+```python
+def countdown():
+    try:
+        for remaining in (3, 2, 1):
+            sa.show_text(f"Countdown: {remaining}")
+            yield sa.wait(1)
+        return "fertig"
+    finally:
+        print("Countdown aufgeraeumt")
+
+task = sa.start_task(countdown())
+# task.cancel()  # kann z.B. von einem Tastencallback aufgerufen werden
+```
+
+`start_task` übernimmt einen frischen Generator, z.B. `countdown()`, und startet
+ihn frühestens im nächsten aktiven Tick. Der Aufruf einer normalen Funktion,
+ein bereits begonnener oder doppelt eingeplanter Generator und async/await-
+Coroutinen werden nicht akzeptiert. Jeder Schritt muss kurz bleiben; die Engine
+kann laufenden Python-Code nicht unterbrechen.
+
+`yield sa.wait(seconds, clock="game")` gibt den Spielthread frei. Spiel-/Echtzeit
+und Pause verhalten sich wie bei Timern; `yield sa.wait()` wartet bis mindestens
+zum nächsten Tick. Nur Wait-Anforderungen sind erlaubt, kein nacktes `yield`,
+kein `time.sleep()` und keine asyncio-Futures. `sa.wait()` allein ist nur ein
+unveränderlicher Wert und wartet nicht ohne `yield`.
+
+`task.cancel()` schließt einen begonnenen Generator und führt sein `finally`
+auf dem Spielthread aus. Mehrfaches Abbrechen ist erlaubt. Selbstabbruch wird
+nach Rückkehr des aktuellen Schritts wirksam. Beim Abbruch vor dem ersten Schritt
+wird der Generatorinhalt einschließlich finally noch nicht betreten; Ressourcen
+deshalb innerhalb des Tasks anfordern. Cleanup darf nicht yielden oder blockieren.
+Ein Uhrreset kann beim pausierten Spiel aufräumen: HUD-/Spielerzugriff im finally
+nur mit erneut geprüften Voraussetzungen. Während globalem Cleanup oder Uhrreset
+dürfen keine neuen Timer oder Tasks angelegt werden.
+
+`done`, `cancelled` und `owner` beschreiben den Zustand und das Generator-Modul.
+`result` enthält den Rückgabewert nach erfolgreichem Abschluss, andernfalls None.
+`error` enthält bei Fehlern eine Beschreibung als Text. Fehler einschließlich
+SystemExit und fehlerhaftes Cleanup werden geloggt und stoppen den betroffenen
+Task. Generator-/Callback-Referenzen werden freigegeben, Fehler-Tracebacks nicht
+im Handle aufbewahrt. Ein laufender Schritt ab 50 ms wird über die Timerdiagnose
+geloggt. Task-Schritte teilen sich das 64-Aufrufe-Budget mit normalen Timern.
+
+Bei erkanntem Spieluhr-Rücksprung werden Tasks abgebrochen, die gerade auf
+Spielzeit warten. Auf Echtzeit wartende Tasks bleiben bestehen. Das ist keine
+vollständige Spielstand-Erkennung; Voraussetzungen vor Spielzugriff erneut prüfen.
+Hot Reload, Mod-Unload, Worker-Queue und asynchrones Modellstreaming folgen separat.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_tasks
+```
+
+G startet/erneuert den Countdown, H bricht ihn ab. Im Log steht beim normalen
+Ende und beim Abbruch eines begonnenen Tasks `Task-Countdown aufgeraeumt`.
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+G drücken und während des Countdowns bewegen, Pause/Fortsetzen prüfen, erneut
+starten und mit H abbrechen. Es dürfen keine alten Countdown-Schritte nachlaufen.

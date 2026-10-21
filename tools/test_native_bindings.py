@@ -18,7 +18,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_game_time(1000)
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 12)
+        self.assertEqual(sa._host_api_version, 13)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 

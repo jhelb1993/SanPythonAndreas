@@ -5,11 +5,14 @@ import sys
 import traceback
 import math
 import time
+import inspect
+import types
+from typing import NamedTuple
 from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 12
+BOOTSTRAP_API_VERSION = 13
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -33,6 +36,10 @@ _loaded = False
 _failed = False
 _timers = {}
 _next_timer_id = 0
+_tasks = {}
+_claimed_generators = set()
+_next_task_id = 0
+_cancelling = False
 _game_last = None
 _game_elapsed = 0.0
 _real_now = time.monotonic
@@ -76,10 +83,19 @@ def _finish_timer(timer):
 
 
 def _cancel_timers(clock=None):
-    for timer in tuple(_timers.values()):
-        if clock is None or timer._clock == clock:
-            timer._cancelled = True
-            _finish_timer(timer)
+    global _cancelling
+    previous = _cancelling
+    _cancelling = True
+    try:
+        for task in tuple(_tasks.values()):
+            if clock is None or task._clock == clock:
+                task.cancel()
+        for timer in tuple(_timers.values()):
+            if clock is None or timer._clock == clock:
+                timer._cancelled = True
+                _finish_timer(timer)
+    finally:
+        _cancelling = previous
 
 
 def _sample_game_clock():
@@ -89,8 +105,9 @@ def _sample_game_clock():
         delta = (current - _game_last) & 0xFFFFFFFF
         if delta > 0x7FFFFFFF:
             # Backward clock reset (e.g. new game). Natural uint32 wrap is small.
-            _cancel_timers("game")
+            _game_last = current
             _game_elapsed = 0.0
+            _cancel_timers("game")
             print("Game clock reset; cancelled game-time timers")
         else:
             _game_elapsed += delta / 1000.0
@@ -105,22 +122,33 @@ def _clock_now(clock):
 def _schedule(delay, callback, clock, repeat):
     global _next_timer_id
     sa._require_game_thread()
-    if isinstance(delay, bool) or not isinstance(delay, (int, float)):
-        raise TypeError("timer duration must be a number, not bool")
-    delay = float(delay)
-    if not math.isfinite(delay) or delay < 0 or (repeat and delay == 0):
-        raise ValueError("timer duration must be finite and nonnegative (repeat interval > 0)")
+    if _cancelling:
+        raise RuntimeError("cannot schedule during runtime cleanup or clock reset")
+    delay = _duration(delay, repeat)
+    _validate_clock(clock)
     if not callable(callback):
         raise TypeError("timer callback must be callable")
-    if not isinstance(clock, str):
-        raise TypeError("clock must be 'game' or 'real'")
-    if clock not in ("game", "real"):
-        raise ValueError("clock must be 'game' or 'real'")
     now = _clock_now(clock)
     _next_timer_id += 1
     timer = Timer(_next_timer_id, callback, clock, delay if repeat else None, now + delay)
     _timers[timer._id] = timer
     return timer
+
+
+def _duration(delay, repeat=False):
+    if isinstance(delay, bool) or not isinstance(delay, (int, float)):
+        raise TypeError("duration must be a number, not bool")
+    delay = float(delay)
+    if not math.isfinite(delay) or delay < 0 or (repeat and delay == 0):
+        raise ValueError("duration must be finite and nonnegative (repeat interval > 0)")
+    return delay
+
+
+def _validate_clock(clock):
+    if not isinstance(clock, str):
+        raise TypeError("clock must be 'game' or 'real'")
+    if clock not in ("game", "real"):
+        raise ValueError("clock must be 'game' or 'real'")
 
 
 def call_later(delay, callback, *, clock="game"):
@@ -131,6 +159,146 @@ def call_later(delay, callback, *, clock="game"):
 def call_every(interval, callback, *, clock="game"):
     """Repeat with a delay after each call; missed intervals are never replayed."""
     return _schedule(interval, callback, clock, True)
+
+
+class Wait(NamedTuple):
+    """Inert wait request. Use yield wait(...) inside a generator task."""
+    seconds: float
+    clock: str
+
+
+def wait(seconds=0, *, clock="game"):
+    seconds = _duration(seconds)
+    _validate_clock(clock)
+    return Wait(seconds, clock)
+
+
+class Task:
+    """Cooperative generator task; each step runs on the game thread."""
+    __slots__ = ("_id", "_generator", "_timer", "_clock", "_running", "_done",
+                 "_cancelled", "_owner", "_result", "_error")
+
+    def __init__(self, token, generator):
+        self._id, self._generator = token, generator
+        self._timer = None
+        self._clock = "game"
+        self._running = self._done = self._cancelled = False
+        self._owner = generator.gi_frame.f_globals.get("__name__", "<unknown>")
+        self._result = self._error = None
+
+    @property
+    def done(self):
+        return self._done
+
+    @property
+    def cancelled(self):
+        return self._cancelled
+
+    @property
+    def owner(self):
+        return self._owner
+
+    @property
+    def result(self):
+        """Generator return value; None until completion, on error or cancellation."""
+        return self._result
+
+    @property
+    def error(self):
+        """Error description, without retaining exception traceback/game objects."""
+        return self._error
+
+    def cancel(self):
+        sa._require_game_thread()
+        if self._done:
+            return
+        self._cancelled = True
+        if not self._running:
+            self._stop(close=True)
+
+    def _stop(self, *, close, result=None):
+        self._done = True
+        self._result = None if self._cancelled or self._error else result
+        _tasks.pop(self._id, None)
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        generator, self._generator = self._generator, None
+        if generator is not None:
+            _claimed_generators.discard(id(generator))
+            if close:
+                try:
+                    generator.close()
+                except BaseException as error:
+                    traceback.print_exc()
+                    self._error = f"{type(error).__name__}: {error}"
+                    print("Task cleanup failed:", self.owner)
+
+    def _arm(self, request):
+        self._clock = request.clock
+        timer = call_later(request.seconds, self._step, clock=request.clock)
+        timer._owner = self.owner
+        if self._done or self._cancelled:
+            timer.cancel()
+        else:
+            self._timer = timer
+
+    def _step(self):
+        self._timer = None
+        if self._done:
+            return
+        if self._cancelled:
+            self._stop(close=True)
+            return
+        self._running = True
+        try:
+            request = next(self._generator)
+        except StopIteration as finished:
+            self._stop(close=False, result=finished.value)
+            return
+        except BaseException as error:
+            traceback.print_exc()
+            self._error = f"{type(error).__name__}: {error}"
+            self._stop(close=True)
+            print("Disabled failing task:", self.owner)
+            return
+        finally:
+            self._running = False
+        if self._cancelled:
+            self._stop(close=True)
+            return
+        try:
+            if not isinstance(request, Wait):
+                raise TypeError("task must yield sa.wait(...); async/await and bare yield are unsupported")
+            # Validate even if the request was built directly with Wait(...).
+            self._arm(wait(request.seconds, clock=request.clock))
+        except BaseException as error:
+            traceback.print_exc()
+            self._error = f"{type(error).__name__}: {error}"
+            self._stop(close=True)
+            print("Disabled failing task:", self.owner)
+
+
+def start_task(generator):
+    """Start a fresh generator on the next active tick; returns a Task handle."""
+    global _next_task_id
+    sa._require_game_thread()
+    if _cancelling:
+        raise RuntimeError("cannot start tasks during runtime cleanup or clock reset")
+    if not isinstance(generator, types.GeneratorType):
+        raise TypeError("pass a generator object, e.g. work(); async coroutines are unsupported")
+    if id(generator) in _claimed_generators or inspect.getgeneratorstate(generator) != inspect.GEN_CREATED:
+        raise ValueError("task requires a fresh generator that is not already scheduled")
+    _next_task_id += 1
+    task = Task(_next_task_id, generator)
+    _tasks[task._id] = task
+    _claimed_generators.add(id(generator))
+    try:
+        task._arm(wait())
+    except BaseException:
+        task._stop(close=True)
+        raise
+    return task
 
 
 def _run_timers(snapshot):
@@ -395,6 +563,10 @@ sa.player = player
 sa.Timer = Timer
 sa.call_later = call_later
 sa.call_every = call_every
+sa.Wait = Wait
+sa.Task = Task
+sa.wait = wait
+sa.start_task = start_task
 
 
 def _notify_error(details):

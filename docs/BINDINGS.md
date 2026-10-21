@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.12.0-dev.1`.
-- Aktuelle interne Host-API: Version `12` (Timer und Spielzeitabfrage).
+- Aktuelle Paketversion: `0.13.0-dev.1`.
+- Aktuelle interne Host-API: Version `13` (kooperative Generator-Tasks).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -68,7 +68,7 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `12` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `13` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -283,7 +283,7 @@ Reale Sitzzuordnung und Speicherzugriffe brauchen die Spielabnahme.
 Prüfstand API 11: Release/x86-Build, 26 native Tests, 30 Python-Tests und
 Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
 
-## Timer (API 12, Spielabnahme offen)
+## Timer (API 12, vom Nutzer bestätigt)
 
 ABI ergänzt `gameTimeMs()`, unsigned 32-Bit. Gepinnte Referenz `CTimer.cpp`:
 `m_snTimeInMilliseconds` bei 0xB7CB84. Der Wert ist auch im pausierten Tick auf
@@ -305,6 +305,36 @@ langsame Timer ab 50 ms mit Modul und Callbacknamen protokolliert.
 
 main.py-Fehler verwerfen auch teilweise registrierte Timer. owner ist lediglich
 das Callback-Modul, keine vollständige Mod-Lebensdauerverwaltung. Generator-
-Tasks, Worker-Queue und asynchrones Modellstreaming sind weiterhin offen.
+Tasks folgen in API 13; Worker-Queue und asynchrones Modellstreaming bleiben offen.
 Prüfstand API 12: Release/x86-Build, 27 native Tests, 40 Python-Tests und
-Paketprüfung bestanden. Spielabnahme offen.
+Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
+
+## Kooperative Generator-Tasks (API 13, Spielabnahme offen)
+
+Keine neuen Spieladressen und keine ABI-Felder. Paket-/API-Version erhöht,
+damit Host, Runtime und neuer Bootstrap weiterhin gemeinsam geprüft werden.
+`start_task` nimmt ausschließlich frische Python-Generatoren entgegen. Eine
+Registry verhindert auch das doppelte Einplanen noch nicht begonnener Generatoren.
+Wait ist ein unveränderliches NamedTuple; auch direkt erzeugte Tokens werden
+vor dem Planen validiert. Kein asyncio-Loop, keine Worker-Threads.
+
+Jeder Schritt wird als einmaliger Timer geplant; neue Schritte warten mindestens
+einen Tick und teilen Timer-Zeitquellen, Pause, Budget und Langsamkeitsdiagnose.
+Cancel entfernt den wartenden Timer und schließt den Generator. Selbstabbruch
+wird bis nach next() verschoben, damit kein laufender Generator geschlossen wird.
+finally darf nicht yielden; Cleanup-Fehler werden geloggt und im Handle als Text
+gespeichert. Ergebnis/Fehler-/Abbruchzustände sind getrennt; Generatorreferenzen
+und Claims werden beim Stop freigegeben, kein Exception-Traceback gespeichert.
+
+Uhrreset setzt die neue Zeitbasis vor dem Cleanup, um rekursive Reseterkennung
+aus finally zu vermeiden. Tasks, die aktuell auf Spielzeit warten, werden
+zusammen mit Spielzeit-Timern abgebrochen; Echtzeit-Wartezustände bleiben bestehen.
+Während globalem Cleanup wird Registrierung blockiert, damit finally keine
+verwaisten Tasks oder Timer erzeugt. Ladefehler von main.py räumen auch Tasks auf.
+owner bleibt das Generator-Modul, keine vollständige Mod-Identität.
+
+Tests prüfen Warten/Rückgabe, Abbruch vor Start, Selbstabbruch, finally,
+Cleanup-Fehler, ungültige Yields/Tokens, doppelte Generatoren, Threadprüfung,
+Uhrreset/Echtzeit, Ladefehler und das G/H-Beispiel. Spielabnahme offen.
+Prüfstand API 13: Release/x86-Build, 27 native Tests, 51 Python-Tests und
+Paketprüfung bestanden.

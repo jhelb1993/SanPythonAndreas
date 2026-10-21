@@ -1,6 +1,6 @@
 """Editor types for the built-in GTA module; not an executable implementation."""
-from collections.abc import Callable, Iterator
-from typing import TypeVar
+from collections.abc import Callable, Iterator, Generator
+from typing import TypeVar, NamedTuple
 from enum import IntEnum
 
 __version__: str
@@ -49,6 +49,49 @@ def call_every(interval: float, callback: Callable[[], None], *, clock: str = "g
 
     No catch-up burst. At most one call per timer per active frame; 64 total.
     Callback errors stop that timer. Cancel via the returned handle.
+    """
+    ...
+
+
+class Wait(NamedTuple):
+    seconds: float
+    clock: str
+
+
+class Task:
+    """Cooperative generator task, created by start_task()."""
+    @property
+    def done(self) -> bool: ...
+    @property
+    def cancelled(self) -> bool: ...
+    @property
+    def owner(self) -> str: ...
+    @property
+    def result(self) -> object:
+        """Return value after successful completion; otherwise None."""
+        ...
+    @property
+    def error(self) -> str | None:
+        """Execution/cleanup error description; does not retain the traceback."""
+        ...
+    def cancel(self) -> None:
+        """Game thread only. Closes a started generator, running its finally.
+
+        Self-cancellation takes effect after the current step yields/returns.
+        Cleanup must not yield. Cancelling before the first step runs no body.
+        """
+        ...
+
+
+def wait(seconds: float = 0, *, clock: str = "game") -> Wait:
+    """Inert request: yield this from a task. Zero waits until the next tick."""
+    ...
+
+
+def start_task(generator: Generator[Wait, None, object]) -> Task:
+    """Schedule a fresh generator object; async/await coroutines are unsupported.
+
+    Starts next active tick and resumes on the game thread, sharing timer budget.
     """
     ...
 
