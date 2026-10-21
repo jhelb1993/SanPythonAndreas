@@ -7,7 +7,7 @@ def start():
     sa.show_text("SanPythonAndreas bereit! F5: Spieler heilen")
 
 
-@sa.on_key_down("SPACE")
+@sa.on_key_down("F5")
 def heal():
     player = sa.player()
     if player is None or player.health <= 0:
