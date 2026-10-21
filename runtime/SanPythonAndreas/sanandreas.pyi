@@ -261,6 +261,13 @@ class Vehicle:
     def close(self) -> None:
         """Idempotent on game thread, also during pause; never deletes the vehicle."""
         ...
+    def remove(self) -> None:
+        """Delete only a spawn_vehicle() car, empty and unattached; closes this handle.
+
+        Other handles become invalid. Rejected during door transitions or inactive
+        gameplay. Captured traffic/mission cars cannot be deleted.
+        """
+        ...
     def __enter__(self) -> Vehicle: ...
     def __exit__(self, exc_type: object, exc_value: object, exc_trace: object) -> bool: ...
 
@@ -368,6 +375,17 @@ class Player:
         Does not find ground or guarantee the destination is unobstructed.
         """
         ...
+
+
+def spawn_vehicle(model_id: int, position: Vector3, *, heading: float = 0) -> Vehicle:
+    """Create a normal automobile outdoors with a loaded model; maximum 32 owned cars.
+
+    Call inside a load_model() lease. GTA's script factory places the car without
+    obstacle checks. close() only unregisters the handle; remove() deletes the car.
+    Ownership is runtime-wide, not per mod. On detected clock reset/main-load error,
+    empty cars are deleted; occupied/attached cars return to GTA's lifetime control.
+    """
+    ...
 
 
 def player() -> Player | None:

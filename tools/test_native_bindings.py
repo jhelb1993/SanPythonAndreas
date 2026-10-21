@@ -21,9 +21,87 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 16)
+        self.assertEqual(sa._host_api_version, 17)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
+
+    def test_spawn_requires_loaded_automobile_and_valid_arguments(self):
+        position = sa.Vector3(10, 20, 30)
+        with self.assertRaises(RuntimeError):
+            sa._spawn_vehicle(411, position, 0)
+        sa._test_model_loaded(411, True)
+        for model in (0, 7, 522):
+            with self.assertRaises(ValueError):
+                sa._spawn_vehicle(model, position, 0)
+        for model in (True, 411.0, "411"):
+            with self.assertRaises(TypeError):
+                sa._spawn_vehicle(model, position, 0)
+        for heading in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                sa._spawn_vehicle(411, position, heading)
+        with self.assertRaises(TypeError):
+            sa._spawn_vehicle(411, position, True)
+        with self.assertRaises(ValueError):
+            sa._spawn_vehicle(411, sa.Vector3(20001, 0, 0), 0)
+        sa._test_ready(False)
+        with self.assertRaises(RuntimeError):
+            sa._spawn_vehicle(411, position, 0)
+
+    def test_spawn_remove_invalidates_handles_and_protects_other_cars(self):
+        sa._test_model_loaded(411, True)
+        token = sa._spawn_vehicle(411, sa.Vector3(10, 20, 30), 450)
+        self.assertTrue(sa._vehicle_handle_valid(token))
+        snapshot = sa._vehicle_info(token)
+        self.assertEqual((snapshot.model_id, snapshot.health, tuple(snapshot.position)),
+                         (411, 1000, (10, 20, 30)))
+        sa._test_owned_vehicle_busy(token, True)
+        with self.assertRaises(RuntimeError):
+            sa._remove_vehicle(token)
+        self.assertTrue(sa._vehicle_handle_valid(token))
+        sa._test_owned_vehicle_busy(token, False)
+        sa._remove_vehicle(token)
+        self.assertFalse(sa._vehicle_handle_valid(token))
+        with self.assertRaises(sa.InvalidVehicleError):
+            sa._remove_vehicle(token)
+        sa._test_vehicle(1, 400, 800, True)
+        traffic = sa._capture_player_vehicle()
+        with self.assertRaisesRegex(RuntimeError, "only vehicles"):
+            sa._remove_vehicle(traffic)
+        self.assertTrue(sa._vehicle_handle_valid(traffic))
+
+    def test_owned_cars_survive_handle_close_until_cleanup_and_limit_recovers(self):
+        sa._test_model_loaded(411, True)
+        for _ in range(32):
+            token = sa._spawn_vehicle(411, sa.Vector3(), 0)
+            sa._close_vehicle_handle(token)
+        self.assertEqual(sa._test_owned_vehicle_count(), 32)
+        with self.assertRaises(RuntimeError):
+            sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._cleanup_owned_vehicles()
+        self.assertEqual(sa._test_owned_vehicle_count(), 0)
+        token = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._test_handle_reference_failure(True)
+        with self.assertRaises(RuntimeError):
+            sa._spawn_vehicle(411, sa.Vector3(), 0)
+        self.assertEqual(sa._test_owned_vehicle_count(), 1)
+        sa._test_handle_reference_failure(False)
+        sa._test_owned_vehicle_busy(token, True)
+        sa._cleanup_owned_vehicles()
+        self.assertTrue(sa._vehicle_handle_valid(token))
+        with self.assertRaises(RuntimeError):
+            sa._remove_vehicle(token)
+
+    def test_spawn_remove_and_cleanup_require_game_thread(self):
+        sa._test_model_loaded(411, True)
+        token = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._test_thread(False)
+        try:
+            for call in (lambda: sa._spawn_vehicle(411, sa.Vector3(), 0),
+                         lambda: sa._remove_vehicle(token), sa._cleanup_owned_vehicles):
+                with self.assertRaises(RuntimeError):
+                    call()
+        finally:
+            sa._test_thread(True)
 
     def test_health_read_write_and_missing_player(self):
         self.assertEqual(sa._player_health(), (25.0, 100.0))

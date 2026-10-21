@@ -456,3 +456,34 @@ Prüfung, explizites/context Close und das B/Z/X-Beispiel. Native Referenzlisten
 und echte Pool-Reuse-Fälle brauchen den Spieltest.
 Prüfstand API 16: Release/x86-Build, 34 native Tests, 74 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.
+## Vehicle creation (API 17)
+
+`sa.spawn_vehicle(model_id, position, *, heading=0)` returns a checked `Vehicle`.
+It requires active gameplay, a living player outdoors, no door transition and an
+already loaded normal automobile model. Use a `with (yield from sa.load_model(id))`
+lease around creation. Bikes, aircraft, trains, trailers, monster trucks and quads
+are currently excluded. IDs only; name resolution follows separately.
+
+The native factory is pinned SDK `CCarCtrl::CreateCarForScript` (0x431F80), called
+without SCM mission cleanup registration. GTA handles placement/world insertion;
+there is no obstacle check. Heading uses degrees. Coordinate bounds match teleport.
+The created vehicle keeps its own GTA model reference after the temporary lease
+is released.
+
+Up to 32 native ownership records register separate GTA references, independently
+of the 128 public handle slots. Creation rolls back if either reference cannot be
+registered. `Vehicle.remove()` checks identity and runtime ownership, rejects
+occupied cars, entry/exit, trailer links and door transitions, removes the car
+from CWorld and invokes its deleting destructor. Other handles become invalid.
+Captured traffic/mission cars cannot be deleted. `close()` still only unregisters
+the public handle; closed cars remain tracked for runtime cleanup.
+
+On detected clock reset or main-script load failure, empty owned cars are deleted.
+Busy cars return to GTA lifetime management through `SetVehicleCreatedBy`, which
+also updates creation counters. References/pool generations prevent deleting
+replacement entities. Ownership is runtime-wide; independent mod ownership and
+complete save/load detection remain future work.
+
+Import `example_spawn_vehicle` in `scripts/main.py`: C loads and creates an Infernus
+beside the player; D cancels pending loading or deletes that car after exiting.
+Repeated C presses do not accumulate cars. Game acceptance is pending.

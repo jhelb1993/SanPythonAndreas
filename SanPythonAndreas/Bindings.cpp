@@ -208,6 +208,44 @@ PYBIND11_MODULE(sanandreas, module)
         RequireGameThread();
         host->closeVehicleHandle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"));
     });
+    module.def("_spawn_vehicle", [](py::handle model, const Vector3& position, py::handle heading) {
+        RequireGameThread();
+        const int id = BoundedInteger(model, 19999, "model ID");
+        if (py::isinstance<py::bool_>(heading)) throw py::type_error("heading must be a number, not bool");
+        const double degrees = PyFloat_AsDouble(heading.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (!std::isfinite(degrees) || std::fabs(position.x) > 20000 || std::fabs(position.y) > 20000
+            || position.z < -1000 || position.z > 10000)
+            throw py::value_error("finite heading and bounded world position required");
+        DWORD token = 0;
+        switch (host->spawnVehicle(id, static_cast<float>(position.x), static_cast<float>(position.y),
+                                  static_cast<float>(position.z), static_cast<float>(std::fmod(degrees, 360.0)), &token))
+        {
+        case 0: return token;
+        case 2: throw py::value_error("model must be a normal automobile; bikes, aircraft, trains and trailers are unsupported");
+        case 3: throw std::runtime_error("model is not loaded; use yield from load_model() and keep its lease while spawning");
+        case 4: throw std::runtime_error("vehicle/reference capacity reached; remove owned vehicles and close unused handles");
+        case 5: throw std::runtime_error("GTA could not create the vehicle (pool full)");
+        case 6: throw std::runtime_error("vehicle spawning requires outdoors, outside door transitions");
+        case 7: throw py::value_error("invalid vehicle position or heading");
+        default: throw std::runtime_error("vehicle spawning requires an active living player");
+        }
+    });
+    module.def("_remove_vehicle", [](py::handle token) {
+        RequireGameThread();
+        switch (host->removeVehicle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token")))
+        {
+        case 0: return;
+        case 2: throw InvalidVehicle("vehicle was removed or its handle closed");
+        case 3: throw std::runtime_error("only vehicles created by spawn_vehicle() may be removed");
+        case 4: throw std::runtime_error("exit the vehicle and detach trailers; wait for entry/exit and door transitions");
+        default: throw std::runtime_error("vehicle removal requires active gameplay");
+        }
+    });
+    module.def("_cleanup_owned_vehicles", [] {
+        RequireGameThread();
+        host->cleanupOwnedVehicles();
+    });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {
         RequireGameThread();

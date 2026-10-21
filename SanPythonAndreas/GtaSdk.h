@@ -22,6 +22,9 @@ namespace sdk
     BOOL VehicleHandleValid(DWORD token) noexcept;
     int VehicleHandleInfo(DWORD token, SpaPlayerVehicle* value) noexcept;
     void CloseVehicleHandle(DWORD token) noexcept;
+    int SpawnVehicle(int model, float x, float y, float z, float heading, DWORD* token) noexcept;
+    int RemoveVehicle(DWORD token) noexcept;
+    void CleanupOwnedVehicles() noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

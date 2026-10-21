@@ -14,7 +14,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 16
+BOOTSTRAP_API_VERSION = 17
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -108,6 +108,7 @@ def _cancel_timers(clock=None):
         # Invalidate them on any detected game-clock reset, including real-time tasks.
         for model in tuple(_models.values()):
             model.release()
+        sa._cleanup_owned_vehicles()
         for vehicle in tuple(_vehicles.values()):
             vehicle.close()
         for job in tuple(_background_jobs.values()):
@@ -710,6 +711,14 @@ class Vehicle:
             _vehicles.pop(self._token, None)
             self._token = 0
 
+    def remove(self):
+        """Delete a script-created, empty, unattached vehicle, then close this handle."""
+        sa._require_game_thread()
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        sa._remove_vehicle(self._token)
+        self.close()
+
     def __enter__(self):
         _ = self.snapshot  # Validate state and object identity before entering.
         return self
@@ -849,6 +858,23 @@ class Player:
         return self._stats()[1]
 
 
+def spawn_vehicle(model_id, position, *, heading=0):
+    """Create a normal automobile outdoors; its model must already be loaded.
+
+    Keep a load_model() lease while calling. Position is passed to GTA's script
+    factory; no obstacle checks. remove() deletes it; close() only closes a handle.
+    Up to 32 owned cars. Reset/error cleanup deletes empty cars and returns
+    occupied/attached cars to GTA. Ownership is runtime-wide, not per mod.
+    """
+    sa._require_game_thread()
+    if _cancelling:
+        raise RuntimeError("cannot spawn vehicles during cleanup or clock reset")
+    token = sa._spawn_vehicle(model_id, position, heading)
+    vehicle = Vehicle(token)
+    _vehicles[token] = vehicle
+    return vehicle
+
+
 def player():
     """Return a view of the current player, or None if no player is available."""
     return None if sa._player_health() is None else Player()
@@ -859,6 +885,7 @@ sa.on_frame = on_frame
 sa.on_key_down = on_key_down
 sa.Player = Player
 sa.Vehicle = Vehicle
+sa.spawn_vehicle = spawn_vehicle
 sa.WeaponType = WeaponType
 sa.player = player
 sa.Timer = Timer

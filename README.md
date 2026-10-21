@@ -12,6 +12,7 @@ import sanandreas as sa
 
 bookmark = None
 vehicle = None
+spawned_vehicle = None
 timers = []
 task = None
 job = None
@@ -175,26 +176,36 @@ def start_timers():
 
 
 def model_demo():
+    global spawned_vehicle
     # Cooperative task: yield instead of blocking the game thread.
     try:
         for remaining in (3, 2, 1):
             sa.show_text(f"Loading model in {remaining}...")
             yield sa.wait(1)
-        # Stream Infernus model 411 without spawning a vehicle.
+        # Keep the model lease while creating an Infernus outdoors.
         with (yield from sa.load_model(411, timeout=10)) as model:
             print("Model ready:", model.model_id, model.ready)
-            sa.show_text("Model loaded; holding it for three game seconds.")
+            p = player()
+            spawned_vehicle = sa.spawn_vehicle(
+                model.model_id, p.position + sa.Vector3(5, 0, 1), heading=p.heading)
+            sa.show_text("Infernus spawned. D: remove (exit first).")
             yield sa.wait(3)
         sa.show_text("Model lease released.")
-    except (TimeoutError, RuntimeError) as error:
+    except (TimeoutError, RuntimeError, ValueError) as error:
         print("Model task:", error)
     finally:
         print("Model task cleaned up.")
 
 
-@key("U")  # Start a task with waits, model streaming and automatic release.
+@key("C")  # Countdown, model streaming and spawning. Choose an open outdoor area.
 def start_model_demo():
-    global task
+    global task, spawned_vehicle
+    if spawned_vehicle is not None:
+        if spawned_vehicle.valid:
+            sa.show_text("Remove your previous Infernus with D first.")
+            return
+        spawned_vehicle.close()
+        spawned_vehicle = None
     if task is not None:
         task.cancel()
     task = sa.start_task(model_demo())
@@ -204,6 +215,18 @@ def start_model_demo():
 def cancel_task():
     if task is not None:
         task.cancel()
+
+
+@key("D")  # Remove only the spawned car; rejected with occupants or attachments.
+def remove_spawned_vehicle():
+    global spawned_vehicle
+    cancel_task()
+    if spawned_vehicle is not None:
+        if spawned_vehicle.valid:
+            spawned_vehicle.remove()
+        else:
+            spawned_vehicle.close()
+        spawned_vehicle = None
 
 
 def read_script():

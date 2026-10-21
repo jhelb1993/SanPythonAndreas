@@ -52,5 +52,11 @@ struct SpaHostApi
     BOOL (__cdecl* vehicleHandleValid)(DWORD);
     int (__cdecl* vehicleHandleInfo)(DWORD, SpaPlayerVehicle*); // 1 success, -1 inactive, -2 invalid handle
     void (__cdecl* closeVehicleHandle)(DWORD); // unregister only; never delete vehicle
+    // spawn: 0 success, 1 inactive, 2 unsupported model, 3 not loaded,
+    // 4 capacity/reference failure, 5 creation failure, 6 indoor/transition, 7 invalid coordinates.
+    int (__cdecl* spawnVehicle)(int, float, float, float, float, DWORD*);
+    // remove: 0 success, 1 inactive, 2 invalid handle, 3 not script-owned, 4 occupied/attached/transition.
+    int (__cdecl* removeVehicle)(DWORD);
+    void (__cdecl* cleanupOwnedVehicles)(); // delete empty; hand occupied/attached cars back to GTA
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

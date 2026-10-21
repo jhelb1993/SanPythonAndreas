@@ -93,6 +93,41 @@ namespace
         return 1;
     }
     void __cdecl CloseVehicle(DWORD token) { vehicleHandles.erase(token); }
+    std::unordered_map<int, bool> ownedVehicles; // value: occupied/attached
+    int nextOwnedVehicle = 1000;
+    int __cdecl SpawnVehicle(int model, float x, float y, float z, float, DWORD* token)
+    {
+        if (!ready || health <= 0) return 1;
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
+            || std::fabs(x) > 20000 || std::fabs(y) > 20000 || z < -1000 || z > 10000) return 7;
+        if (model != 411 && model != 400) return 2;
+        if (!loadedModels[model]) return 3;
+        if (ownedVehicles.size() >= 32 || vehicleHandles.size() >= 128 || failVehicleReference) return 4;
+        const int id = ++nextOwnedVehicle;
+        handleVehicles.emplace(id, FakeVehicleEntity{0, {model, FALSE, 1000, x, y, z}});
+        ownedVehicles.emplace(id, false);
+        *token = ++nextVehicleToken;
+        vehicleHandles.emplace(*token, FakeVehicleHandle{id, 0, true});
+        return 0;
+    }
+    int __cdecl RemoveVehicle(DWORD token)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const int id = vehicleHandles.at(token).entity;
+        const auto owner = ownedVehicles.find(id);
+        if (owner == ownedVehicles.end()) return 3;
+        if (owner->second) return 4;
+        handleVehicles.erase(id);
+        ownedVehicles.erase(id);
+        return 0;
+    }
+    void __cdecl CleanupOwnedVehicles()
+    {
+        for (const auto& owner : ownedVehicles)
+            if (!owner.second) handleVehicles.erase(owner.first);
+        ownedVehicles.clear();
+    }
     int __cdecl ReadVehicle(SpaPlayerVehicle* value)
     {
         if (!ready) return -1;
@@ -247,7 +282,8 @@ namespace
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
-        RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle};
+        RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
+        SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -281,6 +317,7 @@ void InstallTestControls(py::module_& module)
         vehicleData.x = x; vehicleData.y = y; vehicleData.z = z;
     });
     module.def("_test_reset_vehicle_handles", [] {
+        ownedVehicles.clear(); nextOwnedVehicle = 1000;
         handleVehicles.clear(); vehicleHandles.clear(); currentVehicleId = 1; nextVehicleToken = 0; failVehicleReference = false;
     });
     module.def("_test_handle_current", [](int id) {
@@ -301,6 +338,10 @@ void InstallTestControls(py::module_& module)
         if (currentVehicleId == id) vehicleData = entity.data;
     });
     module.def("_test_handle_reference_failure", [](bool value) { failVehicleReference = value; });
+    module.def("_test_owned_vehicle_busy", [](DWORD token, bool busy) {
+        ownedVehicles.at(vehicleHandles.at(token).entity) = busy;
+    });
+    module.def("_test_owned_vehicle_count", [] { return ownedVehicles.size(); });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

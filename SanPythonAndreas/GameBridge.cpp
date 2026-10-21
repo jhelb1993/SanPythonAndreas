@@ -82,7 +82,8 @@ namespace
         HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading, HostPlayerArmour, HostSetPlayerArmour,
         HostPlayerMoney, HostSetPlayerMoney, HostPlayerWantedLevel, HostSetPlayerWantedLevel, HostPlayerWeapon, HostPlayerWeaponAction, sdk::ReadPlayerVehicle, HostGameTimeMs,
         sdk::RequestModel, sdk::ModelReady, sdk::ReleaseModel,
-        sdk::CapturePlayerVehicle, sdk::VehicleHandleValid, sdk::VehicleHandleInfo, sdk::CloseVehicleHandle};
+        sdk::CapturePlayerVehicle, sdk::VehicleHandleValid, sdk::VehicleHandleInfo, sdk::CloseVehicleHandle,
+        sdk::SpawnVehicle, sdk::RemoveVehicle, sdk::CleanupOwnedVehicles};
     SpaTickFunction runtimeTick = nullptr;
     bool runtimeAttempted = false;
 
@@ -197,7 +198,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 16; Python 3.11 + SDK + pybind11 + checked vehicle handles ---");
+    StartupLog("--- ASI loaded: host API 17; Python 3.11 + SDK + pybind11 + checked vehicle handles ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

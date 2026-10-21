@@ -126,9 +126,18 @@ blockierende Warteschleifen; Abbruch und Timeout funktionieren.
 
 ## 6. Fahrzeug-API
 
+API 17 ergänzt `spawn_vehicle(model_id, position, heading=...)` für normale Autos
+im Außenbereich mit bereits geladenem Modell sowie `Vehicle.remove()`.
+Eigene Fahrzeuge werden nativ separat von Handles verfolgt (maximal 32);
+fremde Fahrzeuge sowie Fahrzeuge mit Insassen/Ein-/Ausstieg/Anhänger werden
+nicht gelöscht. Reset-/Fehler-Cleanup löscht leere eigene Autos; besetzte oder
+verbundene Autos werden an GTA zurückgegeben. `close()` löscht weiterhin nichts.
+Beispiel: `example_spawn_vehicle.py` mit C zum Erzeugen und D zum
+Abbrechen/Entfernen. Spielabnahme offen.
+
 - [ ] Modelle über Namen und IDs auflösen und vor dem Erzeugen laden.
-- [ ] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten.
-- [ ] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben.
+- [ ] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 implementiert (normale Autos, Außenbereich), Spielabnahme offen.
+- [ ] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17 implementiert, Spielabnahme offen.
 - [ ] Position, Heading und Geschwindigkeit lesen/setzten.
 - [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen.

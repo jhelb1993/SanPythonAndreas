@@ -14,6 +14,7 @@
 #include "WeaponPolicy.h"
 #include "RuntimeApi.h"
 #include <CBaseModelInfo.h>
+#include <CVehicleModelInfo.h>
 #include <array>
 #include <CHeli.h>
 #include <CPool.h>
@@ -56,6 +57,7 @@ namespace
         int ref = 0;
     };
     std::array<VehicleHandle, 128> vehicleHandles{};
+    std::array<VehicleHandle, 32> ownedVehicles{}; // independent of public handle closure
     DWORD nextVehicleToken = 0;
 
     CPed* FindCurrentPlayer() noexcept
@@ -131,6 +133,61 @@ namespace
         *value = {static_cast<int>(vehicle->m_nModelIndex), vehicle->m_pDriver == FindCurrentPlayer() ? TRUE : FALSE,
             vehicle->m_fHealth, position->x, position->y, position->z};
         return true;
+    }
+
+    void UnregisterVehicle(VehicleHandle& entry) noexcept
+    {
+        if (auto* vehicle = ResolveVehicleHandle(&entry))
+        {
+            using Reference = void (__thiscall*)(CEntity*, CEntity**);
+            reinterpret_cast<Reference>(0x571A00)(vehicle, &entry.entity);
+        }
+        entry = {};
+    }
+
+    int RegisterVehicle(CVehicle* vehicle, VehicleHandle& entry) noexcept
+    {
+        auto* pool = CheckedVehiclePool();
+        if (!pool || nextVehicleToken == 0x7FFFFFFF) return -2;
+        const auto address = reinterpret_cast<std::uintptr_t>(vehicle);
+        const auto base = reinterpret_cast<std::uintptr_t>(pool->m_pObjects);
+        if (address < base || (address - base) % sizeof(CHeli)) return -1;
+        const auto index = (address - base) / sizeof(CHeli);
+        if (index >= static_cast<unsigned int>(pool->m_nSize)
+            || !Accessible(pool->m_byteMap + index, sizeof(tPoolObjectFlags))
+            || pool->m_byteMap[index].bEmpty || vehicle->m_nType != ENTITY_TYPE_VEHICLE) return -1;
+        entry = {++nextVehicleToken, vehicle, pool, pool->m_pObjects,
+            (static_cast<int>(index) << 8) | pool->m_byteMap[index].IntValue()};
+        using Reference = void (__thiscall*)(CEntity*, CEntity**);
+        reinterpret_cast<Reference>(0x571B70)(vehicle, &entry.entity);
+        if (!HasVehicleReference(vehicle, &entry.entity))
+        {
+            entry = {};
+            return -2;
+        }
+        return 1;
+    }
+
+    bool VehicleBusy(const CVehicle* vehicle) noexcept
+    {
+        if (vehicle->m_pDriver || vehicle->m_pTractor || vehicle->m_pTrailer
+            || vehicle->m_nNumPassengers || vehicle->m_nNumGettingIn
+            || vehicle->m_nGettingInFlags || vehicle->m_nGettingOutFlags) return true;
+        for (const auto* passenger : vehicle->m_apPassengers)
+            if (passenger) return true;
+        // Seat pointers can lag during entry/exit. Never delete the player's target.
+        const auto* player = FindCurrentPlayer();
+        return player && player->m_pVehicle == vehicle
+            && (player->m_nPedFlags.bInVehicle || player->m_nPedState == PEDSTATE_ENTER_CAR
+                || player->m_nPedState == PEDSTATE_EXIT_CAR || player->m_nPedState == PEDSTATE_CARJACK);
+    }
+
+    void DeleteVehicle(CVehicle* vehicle) noexcept
+    {
+        // CWorld::Remove, followed by CEntity's scalar deleting destructor (vtable slot 0).
+        reinterpret_cast<void (__cdecl*)(CEntity*)>(0x563280)(vehicle);
+        auto** table = *reinterpret_cast<void***>(vehicle);
+        reinterpret_cast<void (__thiscall*)(CVehicle*, unsigned int)>(table[0])(vehicle, 1);
     }
 
     CBaseModelInfo* ModelInfo(int model) noexcept
@@ -416,28 +473,12 @@ int sdk::CapturePlayerVehicle(DWORD* token) noexcept
     if (state != 1) return state;
     auto* player = FindCurrentPlayer();
     CVehicle* vehicle = player->m_pVehicle;
-    auto* pool = CheckedVehiclePool();
-    if (!pool) return -1;
-    const auto address = reinterpret_cast<std::uintptr_t>(vehicle);
-    const auto base = reinterpret_cast<std::uintptr_t>(pool->m_pObjects);
-    if (address < base || (address - base) % sizeof(CHeli) != 0) return -1;
-    const auto index = (address - base) / sizeof(CHeli);
-    if (index >= static_cast<unsigned int>(pool->m_nSize)
-        || !Accessible(pool->m_byteMap + index, sizeof(tPoolObjectFlags))
-        || pool->m_byteMap[index].bEmpty || vehicle->m_nType != ENTITY_TYPE_VEHICLE) return -1;
     VehicleHandle* entry = nullptr;
     for (auto& slot : vehicleHandles)
         if (!slot.token) { entry = &slot; break; }
-    if (!entry || nextVehicleToken == 0x7FFFFFFF) return -2;
-    *entry = {++nextVehicleToken, vehicle, pool, pool->m_pObjects,
-        (static_cast<int>(index) << 8) | pool->m_byteMap[index].IntValue()};
-    using Reference = void (__thiscall*)(CEntity*, CEntity**);
-    reinterpret_cast<Reference>(0x571B70)(vehicle, &entry->entity);
-    if (!HasVehicleReference(vehicle, &entry->entity))
-    {
-        *entry = {};
-        return -2; // GTA reference pool exhausted: never expose an untracked pointer.
-    }
+    if (!entry) return -2;
+    const int result = RegisterVehicle(vehicle, *entry);
+    if (result != 1) return result;
     *token = entry->token;
     return 1;
 }
@@ -460,12 +501,104 @@ void sdk::CloseVehicleHandle(DWORD token) noexcept
     if (!game::IsGameThread()) return;
     auto* entry = FindVehicleHandle(token);
     if (!entry) return;
-    if (auto* vehicle = ResolveVehicleHandle(entry))
+    UnregisterVehicle(*entry);
+}
+
+int sdk::SpawnVehicle(int model, float x, float y, float z, float heading, DWORD* token) noexcept
+{
+    float health = 0, maximum = 0;
+    if (!ReadPlayerHealth(&health, &maximum) || health <= 0) return 1;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(heading)
+        || std::fabs(x) > 20000 || std::fabs(y) > 20000 || z < -1000 || z > 10000) return 7;
+    if (PlayerInterior() != 0
+        || reinterpret_cast<bool (__cdecl*)()>(0x43E400)()) return 6;
+    auto* info = ModelInfo(model);
+    // GetModelType is vtable slot 4 in the pinned CBaseModelInfo.cpp.
+    if (!info) return 2;
+    auto** table = *reinterpret_cast<void***>(info);
+    if (reinterpret_cast<ModelInfoType (__thiscall*)(CBaseModelInfo*)>(table[4])(info) != MODEL_INFO_VEHICLE
+        || !Accessible(info, sizeof(CVehicleModelInfo))
+        || static_cast<CVehicleModelInfo*>(info)->m_nVehicleType != VEHICLE_AUTOMOBILE) return 2;
+    auto* streaming = StreamingInfo(model);
+    if (!streaming || streaming->m_nLoadState != LOADSTATE_LOADED || !info->m_pRwObject) return 3;
+
+    VehicleHandle* handle = nullptr;
+    for (auto& slot : vehicleHandles)
+        if (!slot.token) { handle = &slot; break; }
+    VehicleHandle* owner = nullptr;
+    for (auto& slot : ownedVehicles)
     {
-        using Reference = void (__thiscall*)(CEntity*, CEntity**);
-        reinterpret_cast<Reference>(0x571A00)(vehicle, &entry->entity);
+        if (slot.token && !ResolveVehicleHandle(&slot)) UnregisterVehicle(slot);
+        if (!slot.token && !owner) owner = &slot;
     }
-    *entry = {};
+    if (!handle || !owner || nextVehicleToken >= 0x7FFFFFFE || !CheckedVehiclePool()) return 4;
+    auto* pool = CheckedVehiclePool();
+    bool freeSlot = false;
+    for (int i = 0; i < pool->m_nSize; ++i)
+    {
+        if (!Accessible(pool->m_byteMap + i, sizeof(tPoolObjectFlags))) return 4;
+        if (pool->m_byteMap[i].bEmpty) { freeSlot = true; break; }
+    }
+    if (!freeSlot) return 5;
+    // Use the game's script factory (no SCM mission cleanup registration).
+    // It sets up physics, world membership and the mission-created vehicle count.
+    CVector position = FindCurrentPlayer()->m_placement.m_vPosn;
+    position.x = x; position.y = y; position.z = z;
+    using Factory = CVehicle* (__cdecl*)(int, CVector, unsigned char);
+    CVehicle* vehicle = reinterpret_cast<Factory>(0x431F80)(model, position, 0);
+    if (!vehicle) return 5;
+    vehicle->m_nAreaCode = 0;
+    reinterpret_cast<void (__thiscall*)(CPlaceable*, float)>(0x43E0C0)(
+        vehicle, std::fmod(heading, 360.0f) * 0.017453292519943295f);
+    // Both registrations must succeed before exposing anything to Python.
+    if (RegisterVehicle(vehicle, *owner) != 1 || RegisterVehicle(vehicle, *handle) != 1)
+    {
+        UnregisterVehicle(*owner);
+        UnregisterVehicle(*handle);
+        DeleteVehicle(vehicle);
+        return 4;
+    }
+    *token = handle->token;
+    return 0;
+}
+
+int sdk::RemoveVehicle(DWORD token) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    VehicleHandle* owner = nullptr;
+    for (auto& slot : ownedVehicles)
+        if (ResolveVehicleHandle(&slot) == vehicle) { owner = &slot; break; }
+    if (!owner) return 3;
+    if (VehicleBusy(vehicle) || reinterpret_cast<bool (__cdecl*)()>(0x43E400)()) return 4;
+    UnregisterVehicle(*owner);
+    DeleteVehicle(vehicle); // GTA nulls all other CReference pointers.
+    return 0;
+}
+
+void sdk::CleanupOwnedVehicles() noexcept
+{
+    if (!game::IsGameThread()) return;
+    for (auto& owner : ownedVehicles)
+    {
+        auto* vehicle = ResolveVehicleHandle(&owner);
+        if (vehicle)
+        {
+            if (VehicleBusy(vehicle))
+            {
+                // Do not evict occupants during reset/error cleanup. GTA owns its
+                // lifetime again; SetVehicleCreatedBy adjusts creation counters.
+                reinterpret_cast<void (__thiscall*)(CVehicle*, int)>(0x6D5D70)(vehicle, RANDOM_VEHICLE);
+            }
+            else
+            {
+                UnregisterVehicle(owner);
+                DeleteVehicle(vehicle);
+            }
+        }
+        UnregisterVehicle(owner);
+    }
 }
 
 int sdk::RequestModel(int model, DWORD* token) noexcept
