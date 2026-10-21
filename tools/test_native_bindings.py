@@ -16,9 +16,10 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_weapons()
         sa._test_vehicle()
         sa._test_game_time(1000)
+        sa._test_reset_models()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 13)
+        self.assertEqual(sa._host_api_version, 14)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -94,7 +95,8 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._set_player_wanted_level(3), sa._player_weapon,
                  lambda: sa._give_player_weapon(22), lambda: sa._select_player_weapon(0),
                  lambda: sa._remove_player_weapon(22), sa._clear_player_weapons, sa._player_vehicle,
-                 sa._game_time_ms, sa._require_game_thread]
+                 sa._game_time_ms, sa._require_game_thread, lambda: sa._request_model(411),
+                 lambda: sa._model_ready(1), lambda: sa._release_model(1)]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -279,6 +281,60 @@ class NativeBindingsTests(unittest.TestCase):
             self.assertEqual(sa._game_time_ms(), milliseconds)
         sa._test_ready(False)
         self.assertEqual(sa._game_time_ms(), 0xFFFFFFFF)
+
+    def test_model_loading_pins_once_and_release_is_independent(self):
+        first = sa._request_model(411)
+        second = sa._request_model(411)
+        self.assertNotEqual(first, second)
+        self.assertFalse(sa._model_ready(first))
+        self.assertEqual(sa._test_model_refs(411), 0)
+        sa._test_model_loaded(411, True)
+        self.assertTrue(sa._model_ready(first))
+        self.assertTrue(sa._model_ready(first))
+        self.assertTrue(sa._model_ready(second))
+        self.assertEqual(sa._test_model_refs(411), 2)
+        sa._test_ready(False)
+        sa._release_model(first)  # Cleanup is allowed while paused.
+        sa._release_model(first)
+        self.assertEqual(sa._test_model_refs(411), 1)
+        sa._test_ready(True)
+        self.assertTrue(sa._model_ready(second))
+        sa._release_model(second)
+        self.assertEqual(sa._test_model_refs(411), 0)
+        with self.assertRaises(RuntimeError):
+            sa._model_ready(first)
+
+    def test_model_loading_validates_ids_and_lease_limits(self):
+        for model in (0, -1, 20000):
+            with self.assertRaises(ValueError):
+                sa._request_model(model)
+        for model in (True, 411.0, 'infernus', None):
+            with self.assertRaises(TypeError):
+                sa._request_model(model)
+        sa._test_model_invalid(True)
+        with self.assertRaises(ValueError):
+            sa._request_model(19999)
+        sa._test_model_invalid(False)
+        tokens = [sa._request_model(411) for _ in range(256)]
+        with self.assertRaises(RuntimeError):
+            sa._request_model(411)
+        sa._release_model(tokens.pop())
+        tokens.append(sa._request_model(411))
+        for token in tokens:
+            sa._release_model(token)
+
+    def test_model_loading_detects_forced_unload_and_inactive_game(self):
+        token = sa._request_model(411)
+        sa._test_model_loaded(411, True)
+        self.assertTrue(sa._model_ready(token))
+        sa._test_model_loaded(411, False)
+        with self.assertRaises(RuntimeError):
+            sa._model_ready(token)
+        sa._release_model(token)
+        self.assertEqual(sa._test_model_refs(411), 0)
+        sa._test_ready(False)
+        with self.assertRaises(RuntimeError):
+            sa._request_model(411)
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

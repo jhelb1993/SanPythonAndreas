@@ -13,6 +13,8 @@
 #include <CWeaponInfo.h>
 #include "WeaponPolicy.h"
 #include "RuntimeApi.h"
+#include <CBaseModelInfo.h>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -30,6 +32,19 @@ static_assert(offsetof(CVehicle, m_fHealth) == 0x4C0);
 
 namespace
 {
+    struct ModelLease
+    {
+        DWORD token = 0;
+        int model = 0;
+        CBaseModelInfo* info = nullptr; // compared with current table; never blindly dereferenced
+        unsigned int key = 0;
+        short txd = -1;
+        RwObject* rwObject = nullptr;
+        bool pinned = false;
+    };
+    std::array<ModelLease, 256> modelLeases{};
+    DWORD nextModelToken = 0;
+
     CPed* FindCurrentPlayer() noexcept
     {
         return plugin::CallAndReturn<CPed*, 0x56E210, int>(-1);
@@ -46,6 +61,35 @@ namespace
             return false;
         return !writable || (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY
             | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY));
+    }
+
+    CBaseModelInfo* ModelInfo(int model) noexcept
+    {
+        if (model < 1 || model >= 20000) return nullptr;
+        // Pinned CModelInfo.cpp: ms_modelInfoPtrs.
+        auto* entry = reinterpret_cast<CBaseModelInfo**>(0xA9B0C8) + model;
+        if (!Accessible(entry, sizeof(*entry)) || !*entry
+            || !Accessible(*entry, sizeof(CBaseModelInfo), true)) return nullptr;
+        return *entry;
+    }
+
+    CStreamingInfo* StreamingInfo(int model) noexcept
+    {
+        auto* info = reinterpret_cast<CStreamingInfo*>(0x8E4CC0) + model;
+        return Accessible(info, sizeof(CStreamingInfo)) ? info : nullptr;
+    }
+
+    ModelLease* FindModelLease(DWORD token) noexcept
+    {
+        if (token == 0) return nullptr;
+        for (auto& lease : modelLeases)
+            if (lease.token == token) return &lease;
+        return nullptr;
+    }
+
+    bool SameModel(const ModelLease& lease, const CBaseModelInfo* info) noexcept
+    {
+        return info && info == lease.info && info->m_nKey == lease.key && info->m_nTxdIndex == lease.txd;
     }
 
     CPlayerInfo* CurrentPlayerInfo() noexcept
@@ -298,6 +342,67 @@ int sdk::ReadPlayerVehicle(SpaPlayerVehicle* value) noexcept
     *value = {static_cast<int>(vehicle->m_nModelIndex), driver ? TRUE : FALSE,
         vehicle->m_fHealth, position->x, position->y, position->z};
     return 1;
+}
+
+int sdk::RequestModel(int model, DWORD* token) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* info = ModelInfo(model);
+    const auto* streaming = info ? StreamingInfo(model) : nullptr;
+    if (!info || !streaming || info->m_nTxdIndex < 0
+        || (streaming->m_nLoadState != LOADSTATE_LOADED && streaming->m_nCdSize == 0)) return 2;
+    ModelLease* slot = nullptr;
+    for (auto& lease : modelLeases)
+        if (lease.token == 0) { slot = &lease; break; }
+    if (!slot || nextModelToken == 0x7FFFFFFF) return 3;
+    *slot = {++nextModelToken, model, info, info->m_nKey, info->m_nTxdIndex, nullptr, false};
+    // No LoadAllRequestedModels: GTA performs the I/O across subsequent frames.
+    reinterpret_cast<decltype(&CStreaming::RequestModel)>(0x4087E0)(model, 0);
+    *token = slot->token;
+    return 0;
+}
+
+int sdk::ModelReady(DWORD token) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return -1;
+    auto* lease = FindModelLease(token);
+    if (!lease) return -1;
+    auto* info = ModelInfo(lease->model);
+    const auto* streaming = info ? StreamingInfo(lease->model) : nullptr;
+    if (!SameModel(*lease, info) || !streaming) return -1;
+    if (lease->pinned)
+        return streaming->m_nLoadState == LOADSTATE_LOADED && info->m_pRwObject == lease->rwObject
+            && info->m_nRefCount > 0 ? 1 : -1;
+    if (streaming->m_nLoadState != LOADSTATE_LOADED)
+    {
+        reinterpret_cast<decltype(&CStreaming::RequestModel)>(0x4087E0)(lease->model, 0);
+        return 0;
+    }
+    if (!info->m_pRwObject || info->m_nRefCount == 0xFFFF) return -1;
+    // Pinned CBaseModelInfo.cpp: AddRef/RemoveRef include the TXD reference.
+    using Ref = void (__thiscall*)(CBaseModelInfo*);
+    reinterpret_cast<Ref>(0x4C4BA0)(info);
+    lease->rwObject = info->m_pRwObject;
+    lease->pinned = true;
+    return 1;
+}
+
+void sdk::ReleaseModel(DWORD token) noexcept
+{
+    if (!game::IsGameThread()) return;
+    auto* lease = FindModelLease(token);
+    if (!lease) return;
+    auto* info = ModelInfo(lease->model);
+    const auto* streaming = info ? StreamingInfo(lease->model) : nullptr;
+    if (lease->pinned && SameModel(*lease, info) && streaming
+        && streaming->m_nLoadState == LOADSTATE_LOADED && info->m_pRwObject == lease->rwObject
+        && info->m_nRefCount > 0)
+    {
+        using Ref = void (__thiscall*)(CBaseModelInfo*);
+        reinterpret_cast<Ref>(0x4C4BB0)(info);
+    }
+    // Never RemoveModel/SetModelIsDeletable: those affect other consumers too.
+    *lease = {};
 }
 
 bool sdk::ReadPlayerPosition(float* x, float* y, float* z) noexcept

@@ -197,6 +197,29 @@ PYBIND11_MODULE(sanandreas, module)
     });
     module.def("_player_health", &PlayerHealth);
     module.def("_require_game_thread", &RequireGameThread);
+    module.def("_request_model", [](py::handle model) {
+        RequireGameThread();
+        const int id = BoundedInteger(model, 19999, "model_id");
+        if (id == 0) throw py::value_error("model_id must be between 1 and 19999");
+        DWORD token = 0;
+        switch (host->requestModel(id, &token))
+        {
+        case 0: return token;
+        case 2: throw py::value_error("model does not exist or has no streamable resource");
+        case 3: throw std::runtime_error("model lease limit reached; release unused models");
+        default: throw std::runtime_error("model loading requires active gameplay");
+        }
+    }, py::arg("model_id"));
+    module.def("_model_ready", [](py::handle token) {
+        RequireGameThread();
+        const int state = host->modelReady(BoundedInteger(token, 0x7FFFFFFF, "model token"));
+        if (state < 0) throw std::runtime_error("model lease unavailable or invalidated; reload the model");
+        return state == 1;
+    });
+    module.def("_release_model", [](py::handle token) {
+        RequireGameThread();
+        host->releaseModel(BoundedInteger(token, 0x7FFFFFFF, "model token"));
+    });
     module.def("_game_time_ms", [] {
         RequireGameThread();
         return host->gameTimeMs();

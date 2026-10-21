@@ -12,7 +12,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 13
+BOOTSTRAP_API_VERSION = 14
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -40,6 +40,7 @@ _tasks = {}
 _claimed_generators = set()
 _next_task_id = 0
 _cancelling = False
+_models = {}
 _game_last = None
 _game_elapsed = 0.0
 _real_now = time.monotonic
@@ -94,6 +95,10 @@ def _cancel_timers(clock=None):
             if clock is None or timer._clock == clock:
                 timer._cancelled = True
                 _finish_timer(timer)
+        # Leases describe streaming resources, not durable save-game identities.
+        # Invalidate them on any detected game-clock reset, including real-time tasks.
+        for model in tuple(_models.values()):
+            model.release()
     finally:
         _cancelling = previous
 
@@ -299,6 +304,72 @@ def start_task(generator):
         task._stop(close=True)
         raise
     return task
+
+
+class Model:
+    """Explicit lease for a loaded streaming resource; release on the game thread."""
+    __slots__ = ("_model_id", "_token")
+
+    def __init__(self, model_id, token):
+        self._model_id, self._token = model_id, token
+
+    @property
+    def model_id(self):
+        return self._model_id
+
+    @property
+    def released(self):
+        return self._token == 0
+
+    @property
+    def ready(self):
+        if self.released:
+            raise RuntimeError("model lease has been released; load the model again")
+        return sa._model_ready(self._token)
+
+    def release(self):
+        sa._require_game_thread()
+        if not self.released:
+            sa._release_model(self._token)
+            _models.pop(self._token, None)
+            self._token = 0
+
+    def __enter__(self):
+        if not self.ready:
+            raise RuntimeError("model is not loaded")
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_trace):
+        self.release()
+        return False
+
+
+def load_model(model_id, *, timeout=10):
+    """Generator: model = yield from load_model(id). Timeout uses real seconds.
+
+    Use a with block or finally to release the returned lease. Closing this
+    generator while it is waiting releases its pending request automatically.
+    """
+    sa._require_game_thread()
+    if _cancelling:
+        raise RuntimeError("cannot request models during runtime cleanup or clock reset")
+    timeout = _duration(timeout)
+    token = sa._request_model(model_id)
+    model = Model(model_id, token)
+    _models[token] = model
+    transferred = False
+    deadline = _real_now() + timeout
+    try:
+        while True:
+            if model.ready:
+                transferred = True
+                return model
+            if _real_now() >= deadline:
+                raise TimeoutError(f"model {model_id} did not load within {timeout:g} real seconds")
+            yield wait(clock="real")
+    finally:
+        if not transferred:
+            model.release()
 
 
 def _run_timers(snapshot):
@@ -567,6 +638,8 @@ sa.Wait = Wait
 sa.Task = Task
 sa.wait = wait
 sa.start_task = start_task
+sa.Model = Model
+sa.load_model = load_model
 
 
 def _notify_error(details):

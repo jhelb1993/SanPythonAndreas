@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 13
+        self.api._host_api_version = 14
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -32,6 +32,13 @@ class RuntimeTests(unittest.TestCase):
         self.game_thread = True
         self.api._game_time_ms = lambda: self.game_ms
         self.api._require_game_thread = self.require_game_thread
+        self.models_loaded = set()
+        self.model_leases = {}
+        self.model_refs = {}
+        self.next_model_token = 0
+        self.api._request_model = self.request_model
+        self.api._model_ready = self.model_ready
+        self.api._release_model = self.release_model
         self.api._is_key_down = lambda key: key in self.keys
         self.api._has_focus = lambda: self.focus
         self.api._player_health = lambda: tuple(self.stats) if self.stats is not None else None
@@ -91,6 +98,40 @@ class RuntimeTests(unittest.TestCase):
     def require_game_thread(self):
         if not self.game_thread:
             raise RuntimeError("requires game thread")
+
+    def request_model(self, model):
+        self.require_game_thread()
+        if isinstance(model, bool) or not isinstance(model, int):
+            raise TypeError("model must be int")
+        if not 1 <= model <= 19999:
+            raise ValueError("model out of bounds")
+        if self.stats is None:
+            raise RuntimeError("no active game")
+        self.next_model_token += 1
+        self.model_leases[self.next_model_token] = {"model": model, "pinned": False}
+        return self.next_model_token
+
+    def model_ready(self, token):
+        self.require_game_thread()
+        lease = self.model_leases.get(token)
+        if lease is None:
+            raise RuntimeError("invalid model lease")
+        model = lease["model"]
+        if model not in self.models_loaded:
+            if lease["pinned"]:
+                raise RuntimeError("forced unload")
+            return False
+        if not lease["pinned"]:
+            self.model_refs[model] = self.model_refs.get(model, 0) + 1
+            lease["pinned"] = True
+        return True
+
+    def release_model(self, token):
+        self.require_game_thread()
+        lease = self.model_leases.pop(token, None)
+        if lease is not None and lease["pinned"]:
+            model = lease["model"]
+            self.model_refs[model] -= 1
 
     def read_vehicle(self):
         if self.stats is None or self.vehicle_error:
@@ -360,7 +401,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 13
+        self.api._host_api_version = 14
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1038,6 +1079,170 @@ raise RuntimeError('broken')
         self.assertEqual(self.runtime._tasks, {})
         self.assertEqual(self.runtime._timers, {})
         self.assertIn("Task-Countdown aufgeraeumt", self.log())
+        self.assertNotIn("Disabled failing", self.log())
+
+    def test_async_model_waits_then_holds_reference_until_context_exit(self):
+        self.script("pass")
+        calls = []
+        def work():
+            with (yield from self.api.load_model(411)) as model:
+                calls.append(model)
+                self.assertTrue(model.ready)
+                yield self.api.wait(1)
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.assertFalse(task.done)
+        self.assertEqual(calls, [])
+        self.assertEqual(len(self.model_leases), 1)
+        self.models_loaded.add(411)
+        self.runtime._tick(True)
+        self.assertEqual(calls[0].model_id, 411)
+        self.assertEqual(self.model_refs[411], 1)
+        self.game_ms += 1000
+        self.runtime._tick(True)
+        self.assertTrue(task.done)
+        self.assertTrue(calls[0].released)
+        self.assertEqual(self.model_refs[411], 0)
+        self.assertEqual(self.runtime._models, {})
+        with self.assertRaises(RuntimeError):
+            _ = calls[0].ready
+        calls[0].release()
+
+    def test_async_model_timeout_releases_pending_request(self):
+        self.script("pass")
+        calls = []
+        def work():
+            try:
+                yield from self.api.load_model(411, timeout=2)
+            except TimeoutError:
+                calls.append("timeout")
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.real_seconds = 2
+        self.runtime._tick(True)
+        self.assertTrue(task.done)
+        self.assertIsNone(task.error)
+        self.assertEqual(calls, ["timeout"])
+        self.assertEqual(self.model_leases, {})
+        self.assertEqual(self.runtime._models, {})
+
+    def test_async_model_cancellation_cleans_pending_and_loaded_requests(self):
+        self.script("pass")
+        def work():
+            with (yield from self.api.load_model(411)):
+                yield self.api.wait(100)
+        pending = self.api.start_task(work())
+        self.runtime._tick(True)
+        pending.cancel()
+        self.assertEqual(self.model_leases, {})
+        self.models_loaded.add(411)
+        loaded = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.assertEqual(self.model_refs[411], 1)
+        loaded.cancel()
+        self.assertEqual(self.model_refs[411], 0)
+        self.assertEqual(self.runtime._models, {})
+        self.assertEqual(self.model_leases, {})
+
+    def test_async_model_consumers_have_independent_references(self):
+        self.script("pass")
+        self.models_loaded.add(411)
+        models = []
+        def work():
+            with (yield from self.api.load_model(411)) as model:
+                models.append(model)
+                yield self.api.wait(100)
+        first = self.api.start_task(work())
+        second = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.assertEqual(self.model_refs[411], 2)
+        first.cancel()
+        self.assertEqual(self.model_refs[411], 1)
+        self.assertTrue(models[1].ready)
+        second.cancel()
+        self.assertEqual(self.model_refs[411], 0)
+
+    def test_async_model_ready_wins_over_timeout_on_resume(self):
+        self.script("pass")
+        def work():
+            return (yield from self.api.load_model(411, timeout=1))
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.real_seconds = 10
+        self.models_loaded.add(411)
+        self.runtime._tick(False)
+        self.assertFalse(task.done)
+        self.runtime._tick(True)
+        self.assertTrue(task.done)
+        self.assertIsNone(task.error)
+        self.assertTrue(task.result.ready)
+        task.result.release()
+
+    def test_async_model_clock_reset_invalidates_lease_and_no_orphan_wait_remains(self):
+        self.script("pass")
+        def work():
+            yield from self.api.load_model(411)
+        task = self.api.start_task(work())
+        self.runtime._tick(True)
+        self.game_ms = 0
+        self.runtime._tick(False)
+        self.assertEqual(self.runtime._models, {})
+        self.assertEqual(self.model_leases, {})
+        self.runtime._tick(True)
+        self.assertTrue(task.done)
+        self.assertIn("released", task.error)
+        self.assertEqual(self.runtime._tasks, {})
+        self.assertEqual(self.runtime._timers, {})
+
+    def test_async_model_input_validation_and_thread_guard(self):
+        for model in (True, 'infernus', 411.0, None):
+            with self.assertRaises(TypeError):
+                next(self.api.load_model(model))
+        for model in (-1, 0, 20000):
+            with self.assertRaises(ValueError):
+                next(self.api.load_model(model))
+        for timeout in (-1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                next(self.api.load_model(411, timeout=timeout))
+        with self.assertRaises(TimeoutError):
+            next(self.api.load_model(411, timeout=0))
+        self.game_thread = False
+        with self.assertRaises(RuntimeError):
+            next(self.api.load_model(411))
+        self.assertEqual(self.model_leases, {})
+
+    def test_script_failure_releases_model_request_started_during_import(self):
+        self.script("import sanandreas as sa\nloader = sa.load_model(411)\nnext(loader)\nraise RuntimeError('broken import')")
+        self.runtime._tick(True)
+        self.assertTrue(self.runtime._failed)
+        self.assertEqual(self.model_leases, {})
+        self.assertEqual(self.runtime._models, {})
+
+    def test_async_model_example_loads_releases_and_cancels(self):
+        self.script((RUNTIME / "scripts" / "example_models.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        press("U")
+        self.runtime._tick(True)
+        self.assertIn("asynchron", self.output[-1])
+        self.models_loaded.add(411)
+        self.runtime._tick(True)
+        self.assertIn("bereit", self.output[-1])
+        self.assertEqual(self.model_refs[411], 1)
+        self.game_ms += 3000
+        self.runtime._tick(True)
+        self.assertEqual(self.output[-1], "Modell 411 freigegeben.")
+        self.assertEqual(self.model_refs[411], 0)
+        press("U")
+        self.runtime._tick(True)
+        press("I")
+        self.assertEqual(self.model_refs[411], 0)
+        self.assertEqual(self.runtime._models, {})
+        self.assertEqual(self.runtime._tasks, {})
         self.assertNotIn("Disabled failing", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

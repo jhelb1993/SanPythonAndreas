@@ -1,4 +1,5 @@
 #pragma once
+#include <Windows.h>
 struct SpaPlayerVehicle;
 namespace sdk
 {
@@ -14,6 +15,9 @@ namespace sdk
     bool ReadPlayerWeapon(int* id, unsigned int* ammo) noexcept;
     int PlayerWeaponAction(int action, int id, unsigned int ammo, bool equip) noexcept;
     int ReadPlayerVehicle(SpaPlayerVehicle* value) noexcept;
+    int RequestModel(int model, DWORD* token) noexcept;
+    int ModelReady(DWORD token) noexcept;
+    void ReleaseModel(DWORD token) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

@@ -43,5 +43,9 @@ struct SpaHostApi
     // -1 unavailable player/invalid vehicle state; 0 on foot; 1 snapshot filled.
     int (__cdecl* playerVehicle)(SpaPlayerVehicle*);
     DWORD (__cdecl* gameTimeMs)(); // CTimer game clock, modulo 2^32; readable while paused.
+    // request: 0 success, 1 inactive, 2 invalid model, 3 lease limit. token > 0.
+    int (__cdecl* requestModel)(int, DWORD*);
+    int (__cdecl* modelReady)(DWORD); // 1 ready (own reference held), 0 pending, -1 unavailable/stale
+    void (__cdecl* releaseModel)(DWORD); // own reference only; safe while paused
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

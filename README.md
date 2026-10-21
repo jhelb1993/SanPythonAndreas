@@ -608,7 +608,8 @@ geloggt. Task-Schritte teilen sich das 64-Aufrufe-Budget mit normalen Timern.
 Bei erkanntem Spieluhr-Rücksprung werden Tasks abgebrochen, die gerade auf
 Spielzeit warten. Auf Echtzeit wartende Tasks bleiben bestehen. Das ist keine
 vollständige Spielstand-Erkennung; Voraussetzungen vor Spielzugriff erneut prüfen.
-Hot Reload, Mod-Unload, Worker-Queue und asynchrones Modellstreaming folgen separat.
+Hot Reload, Mod-Unload und Worker-Queue folgen separat. Asynchrones Modellladen
+ergänzt API 14.
 
 Für das Beispiel in der eigenen `main.py` ergänzen:
 
@@ -618,6 +619,66 @@ import example_tasks
 
 G startet/erneuert den Countdown, H bricht ihn ab. Im Log steht beim normalen
 Ende und beim Abbruch eines begonnenen Tasks `Task-Countdown aufgeraeumt`.
-ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+API-13-Funktion vom Nutzer im Spiel bestätigt. Spieltest:
 G drücken und während des Countdowns bewegen, Pause/Fortsetzen prüfen, erneut
 starten und mit H abbrechen. Es dürfen keine alten Countdown-Schritte nachlaufen.
+
+## Asynchrones Modellladen (API 14)
+
+Paket `0.14.0-dev.1`, Host-API 14:
+
+```python
+def prepare_model():
+    try:
+        with (yield from sa.load_model(411, timeout=10)) as model:
+            print("Infernus-Modell bereit:", model.model_id, model.ready)
+            yield sa.wait(3)
+    except TimeoutError:
+        print("Modell konnte nicht rechtzeitig geladen werden")
+
+task = sa.start_task(prepare_model())
+```
+
+`load_model` ist ein Generator für `yield from` innerhalb eines Tasks. Die
+Anforderung startet beim ersten Task-Schritt. Unterstützt sind ganze Modell-IDs
+1..19999 mit vorhandenen Metadaten und Streamingressource; bool und Namen werden
+abgewiesen. Modell 0 (CJ/Spezialaufbau) ist ausgeschlossen. Fahrzeug-/Ped-Erzeugung
+und Namensauflösung folgen später.
+
+Das Laden verwendet `RequestModel` ohne persistente Streaming-Flags und prüft
+den Status in folgenden aktiven Frames. Es gibt keinen synchronen Load-all-Aufruf.
+Sobald geladen, hält die API eine eigene Modell-/Textur-Referenz. Andere Nutzer
+und deren Flags bleiben erhalten. Maximal 256 offene Anforderungen/Referenzen
+sind möglich; ungenutzte Modelle daher freigeben.
+
+`timeout` sind endliche, nichtnegative Echtzeit-Sekunden (Standard 10). Der Wert
+wird erst im nächsten aktiven Frame geprüft, auch nach einer Pause. Ist das
+Modell dann bereits bereit, gewinnt Bereitschaft vor Timeout. 0 prüft einmal
+sofort und löst andernfalls `TimeoutError` aus. Abbruch während des Wartens gibt
+die Anforderung automatisch frei. Eine schon gemeinsam eingereihte GTA-Anforderung
+wird nicht aus der globalen Ladequeue entfernt und kann später fertig werden.
+
+Der zurückgegebene `Model` bietet `model_id`, `ready`, `released` und `release()`.
+`with` gibt die eigene Referenz bei Ende, Fehler oder Task-Abbruch frei. Alternativ
+in einem finally `model.release()` aufrufen. Nach Rückgabe gehört die Referenz
+dem Skript; sie wird nicht automatisch durch Garbage Collection freigegeben.
+Freigabe ist wiederholbar und auch während Pause auf dem Spielthread erlaubt.
+Sie erzwingt kein sofortiges Entladen: GTA darf das Modell weiter benötigen oder
+im Cache behalten. `ready` nach Freigabe/Invalidierung führt zu `RuntimeError`.
+
+Erkannte Spieluhr-Resets und globale Fehlerbereinigung invalidieren alle offenen
+Model-Anforderungen/Referenzen, auch in Echtzeit-Tasks. Eine ausstehende Ladeabfrage
+meldet das beim Fortsetzen als `RuntimeError`. Modelle sind keine dauerhaften
+Spielstand-Handles; nach Spielstandwechsel neu laden und Voraussetzungen prüfen.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_models
+```
+
+U lädt das Infernus-Modell 411, hält es drei Spielsekunden und gibt es frei;
+I bricht ab. Es wird noch kein Fahrzeug erzeugt. ASI und Datenordner gemeinsam
+aus `Release` aktualisieren. Spielabnahme offen: U, Bereitschaft und Freigabe im
+HUD/Log prüfen, dabei bewegen und Pause/Fortsetzen testen; erneut U und mit I
+abbrechen. Laden darf den Spielthread nicht durch synchrones Warten anhalten.

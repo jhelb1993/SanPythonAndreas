@@ -5,6 +5,7 @@
 #include "BuildInfo.h"
 #include "WeaponPolicy.h"
 #include <array>
+#include <unordered_map>
 #include <string>
 #include <cmath>
 
@@ -16,6 +17,40 @@ namespace
     float armour = 10;
     int money = 500, wantedLevel = 1, wantedMaximum = 6;
     bool wantedBlocked = false;
+    struct FakeModelLease { int model; bool pinned; };
+    std::unordered_map<DWORD, FakeModelLease> modelLeases;
+    std::unordered_map<int, bool> loadedModels;
+    std::unordered_map<int, int> modelRefs;
+    DWORD nextModelToken = 0;
+    bool invalidModel = false;
+    int __cdecl RequestModel(int model, DWORD* token)
+    {
+        if (!ready) return 1;
+        if (invalidModel || model < 1 || model >= 20000) return 2;
+        if (modelLeases.size() >= 256) return 3;
+        *token = ++nextModelToken;
+        modelLeases.emplace(*token, FakeModelLease{model, false});
+        return 0;
+    }
+    int __cdecl ModelReady(DWORD token)
+    {
+        if (!ready) return -1;
+        auto found = modelLeases.find(token);
+        if (found == modelLeases.end()) return -1;
+        auto& lease = found->second;
+        if (lease.pinned && !loadedModels[lease.model]) return -1;
+        if (!loadedModels[lease.model]) return 0;
+        if (!lease.pinned) { ++modelRefs[lease.model]; lease.pinned = true; }
+        return 1;
+    }
+    void __cdecl ReleaseModel(DWORD token)
+    {
+        auto found = modelLeases.find(token);
+        if (found == modelLeases.end()) return;
+        const auto& lease = found->second;
+        if (lease.pinned && loadedModels[lease.model] && modelRefs[lease.model] > 0) --modelRefs[lease.model];
+        modelLeases.erase(found);
+    }
     DWORD gameTimeMs = 1000;
     DWORD __cdecl GameTimeMs() { return gameTimeMs; }
     int vehicleState = 0;
@@ -173,7 +208,8 @@ namespace
     }
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
-        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs};
+        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
+        RequestModel, ModelReady, ReleaseModel};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -188,6 +224,15 @@ void InstallTestControls(py::module_& module)
     module.def("_test_thread", [](bool value) { onThread = value; });
     module.def("_test_max_health", [](float value) { maximum = value; });
     module.def("_test_game_time", [](DWORD value) { gameTimeMs = value; });
+    module.def("_test_reset_models", [] {
+        modelLeases.clear(); loadedModels.clear(); modelRefs.clear(); nextModelToken = 0; invalidModel = false;
+    });
+    module.def("_test_model_loaded", [](int model, bool loaded) {
+        loadedModels[model] = loaded;
+        if (!loaded) modelRefs[model] = 0;
+    });
+    module.def("_test_model_invalid", [](bool value) { invalidModel = value; });
+    module.def("_test_model_refs", [](int model) { return modelRefs[model]; });
     module.def("_test_weapon_status", [](int value) { weaponStatus = value; });
     module.def("_test_reset_weapons", [] { weaponIds.fill(0); weaponAmmo.fill(0); activeSlot = weaponStatus = 0; });
     module.def("_test_vehicle", [](int state, int model, float currentHealth, bool driver) {

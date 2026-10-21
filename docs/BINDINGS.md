@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.13.0-dev.1`.
-- Aktuelle interne Host-API: Version `13` (kooperative Generator-Tasks).
+- Aktuelle Paketversion: `0.14.0-dev.1`.
+- Aktuelle interne Host-API: Version `14` (asynchrones Modellladen).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 27 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 30 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `13` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `14` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -309,7 +309,7 @@ Tasks folgen in API 13; Worker-Queue und asynchrones Modellstreaming bleiben off
 Prüfstand API 12: Release/x86-Build, 27 native Tests, 40 Python-Tests und
 Paketprüfung bestanden. Funktion vom Nutzer im Spiel bestätigt.
 
-## Kooperative Generator-Tasks (API 13, Spielabnahme offen)
+## Kooperative Generator-Tasks (API 13, vom Nutzer bestätigt)
 
 Keine neuen Spieladressen und keine ABI-Felder. Paket-/API-Version erhöht,
 damit Host, Runtime und neuer Bootstrap weiterhin gemeinsam geprüft werden.
@@ -335,6 +335,45 @@ owner bleibt das Generator-Modul, keine vollständige Mod-Identität.
 
 Tests prüfen Warten/Rückgabe, Abbruch vor Start, Selbstabbruch, finally,
 Cleanup-Fehler, ungültige Yields/Tokens, doppelte Generatoren, Threadprüfung,
-Uhrreset/Echtzeit, Ladefehler und das G/H-Beispiel. Spielabnahme offen.
+Uhrreset/Echtzeit, Ladefehler und das G/H-Beispiel. Funktion vom Nutzer bestätigt.
 Prüfstand API 13: Release/x86-Build, 27 native Tests, 51 Python-Tests und
 Paketprüfung bestanden.
+
+## Asynchrones Modellladen (API 14, Spielabnahme offen)
+
+ABI ergänzt requestModel(int,DWORD*), modelReady(DWORD), releaseModel(DWORD).
+Anforderung meldet Erfolg, inaktives Spiel, ungültiges Modell oder Referenzlimit;
+Status meldet bereit, ausstehend oder invalidiert. Tokens sind positive Integer
+und werden im Prozess nie wiederverwendet. Native Registry: maximal 256 Einträge.
+
+Referenzen aus gepinntem SDK: CModelInfo::ms_modelInfoPtrs bei 0xA9B0C8,
+CStreaming::ms_aInfoForModel bei 0x8E4CC0, RequestModel 0x4087E0,
+CBaseModelInfo::AddRef 0x4C4BA0 und RemoveRef 0x4C4BB0. Modell-ID,
+Speicherregion, Metadaten und CD-Ressource werden vor dem Request geprüft.
+Geladener Zustand wird aus CStreamingInfo gelesen; kein LoadAllRequestedModels.
+
+Bei Bereitschaft genau ein AddRef pro Token, einschließlich TXD-Referenz. Native
+Einträge speichern Metadaten-/RW-Identität nur zur Prüfung gegen den aktuellen
+Modelltabelleneintrag. Vor RemoveRef werden Identität, Streamingzustand und
+positiver Refcount erneut geprüft; eine ungültig gewordene Ressource wird nicht
+blind dereferenziert/dekrementiert. Keine Rohzeiger in Python, keine Änderung
+fremder Streamingflags, kein globales RemoveModel/SetModelIsDeletable.
+Semantikvergleich: [gta-reversed BaseModelInfo](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Models/BaseModelInfo.cpp)
+und [Streaming](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Streaming.cpp).
+
+load_model ist ein delegierbarer Generator. Er wartet pro Frame auf Bereitschaft
+mit Echtzeit-Timeout; Bereitschaft gewinnt bei gleichzeitiger Fristüberschreitung.
+Vor Rückgabe räumt Generator-Close seine Anforderung auf. Nach Rückgabe hält Model
+die Referenz bis release()/Kontextende. Ohne with/finally bleibt sie explizit
+angefordert; es gibt keinen nativen __del__-Aufruf aus einem beliebigen Thread.
+
+Globaler Cleanup und erkannte Uhrresets geben alle Models frei, auch bei auf
+Echtzeit wartenden Tasks. Bereits wartende load_model-Aufrufe erkennen die
+Invalidierung beim nächsten Schritt. Noch ausstehende globale GTA-Requests dürfen
+weiterlaufen; fremde Konsumenten werden nicht abgebrochen.
+
+Tests prüfen Bereitschaft, Referenzgewinn genau einmal, unabhängige Verbraucher,
+Grenzen/Limit, Pause, Timeout, Abbruch, Kontextfreigabe, Uhrreset und Ladefehler.
+Echtes Streaming und Refcount-/TXD-Verhalten brauchen den Spieltest.
+Prüfstand API 14: Release/x86-Build, 30 native Tests, 60 Python-Tests und
+Paketprüfung bestanden. Spielabnahme offen.

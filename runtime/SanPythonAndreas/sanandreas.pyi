@@ -96,6 +96,33 @@ def start_task(generator: Generator[Wait, None, object]) -> Task:
     ...
 
 
+class Model:
+    """Explicit streaming lease. Use with/finally; release on the game thread."""
+    @property
+    def model_id(self) -> int: ...
+    @property
+    def released(self) -> bool: ...
+    @property
+    def ready(self) -> bool:
+        """Check readiness; first successful check acquires an owned model/TXD ref."""
+        ...
+    def release(self) -> None:
+        """Idempotent. Drops only this lease; does not force unloading shared models."""
+        ...
+    def __enter__(self) -> Model: ...
+    def __exit__(self, exc_type: object, exc_value: object, exc_trace: object) -> bool: ...
+
+
+def load_model(model_id: int, *, timeout: float = 10) -> Generator[Wait, None, Model]:
+    """Use model = yield from load_model(id), then release via with/finally.
+
+    Model IDs 1..19999; metadata and streamability are checked. Timeout uses real
+    seconds and is checked at active frames; ready wins if both happen together.
+    Cancelling a pending task releases the request. No blocking load-all call.
+    """
+    ...
+
+
 class Vector3:
     """Immutable, finite coordinates. Changes through arithmetic return new values."""
     def __init__(self, x: float = 0, y: float = 0, z: float = 0) -> None: ...
