@@ -253,6 +253,26 @@ class Vehicle:
     @property
     def snapshot(self) -> VehicleInfo: ...
     @property
+    def heading(self) -> float:
+        """Degrees [0,360); setter normalizes finite angles and clears angular velocity.
+
+        Changes yaw without rotating linear velocity. Normal cars only.
+        Setters reject wrecks, attachments, NPC drivers and entry/exit transitions.
+        """
+        ...
+    @heading.setter
+    def heading(self, value: float) -> None: ...
+    @property
+    def velocity(self) -> Vector3:
+        """Detached world velocity in metres per game second; length() gives speed.
+
+        Setter accepts Vector3 with magnitude <=200 m/s. Instantaneous impulse,
+        not a speed lock; gravity, collisions and input apply on subsequent frames.
+        """
+        ...
+    @velocity.setter
+    def velocity(self, value: Vector3) -> None: ...
+    @property
     def primary_color(self) -> int:
         """Raw primary palette index; setter accepts integers 0..127, not bool.
 

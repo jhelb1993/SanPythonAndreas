@@ -64,6 +64,8 @@ namespace
         bool damaged = true, burning = true, engineBroken = true;
         bool wrecked = false, unsupported = false;
         int primary = 3, secondary = 6;
+        float heading = 0, vx = 0, vy = 0, vz = 0;
+        bool motionBlocked = false;
     };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
@@ -101,6 +103,33 @@ namespace
         return 1;
     }
     void __cdecl CloseVehicle(DWORD token) { vehicleHandles.erase(token); }
+    int __cdecl VehicleMotion(DWORD token, SpaVehicleMotion* value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        *value = {car.heading, car.vx, car.vy, car.vz};
+        return 0;
+    }
+    int __cdecl SetVehicleHeading(DWORD token, float value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported || car.wrecked || car.motionBlocked || car.data.health <= 0) return 3;
+        car.heading = value;
+        return 0;
+    }
+    int __cdecl SetVehicleVelocity(DWORD token, float x, float y, float z)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported || car.wrecked || car.motionBlocked || car.data.health <= 0) return 3;
+        car.vx = x; car.vy = y; car.vz = z;
+        return 0;
+    }
     int __cdecl VehicleColors(DWORD token, int* primary, int* secondary)
     {
         if (!ready) return 1;
@@ -358,7 +387,8 @@ namespace
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
         SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
-        SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor};
+        SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor,
+        VehicleMotion, SetVehicleHeading, SetVehicleVelocity};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -367,6 +397,9 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
+    module.def("_test_vehicle_motion_blocked", [](DWORD token, bool blocked) {
+        handleVehicles.at(vehicleHandles.at(token).entity).motionBlocked = blocked;
+    });
     module.def("_test_vehicle_damage", [](DWORD token, bool wrecked, bool unsupported) {
         auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
         car.damaged = car.burning = car.engineBroken = true;

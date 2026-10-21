@@ -10,6 +10,12 @@ struct SpaPlayerVehicle
     float x, y, z;
 };
 
+struct SpaVehicleMotion
+{
+    float heading; // degrees [0,360)
+    float x, y, z; // world velocity in metres per game second
+};
+
 struct SpaHostApi
 {
     DWORD size;
@@ -71,5 +77,10 @@ struct SpaHostApi
     // Colors: 0 success, 1 inactive, 2 stale handle, 3 unsupported, 4 invalid.
     int (__cdecl* vehicleColors)(DWORD, int*, int*);
     int (__cdecl* setVehicleColor)(DWORD, int, int); // channel 0 primary / 1 secondary; color 0..127
+    // Motion: 0 success, 1 inactive/bad state, 2 stale handle,
+    // 3 unsupported/wrecked/attached/transition/non-player driver, 4 invalid input.
+    int (__cdecl* vehicleMotion)(DWORD, SpaVehicleMotion*);
+    int (__cdecl* setVehicleHeading)(DWORD, float);
+    int (__cdecl* setVehicleVelocity)(DWORD, float, float, float);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

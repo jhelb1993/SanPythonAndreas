@@ -140,7 +140,7 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [ ] Modelle über Namen und IDs auflösen und vor dem Erzeugen laden.
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
-- [ ] Position, Heading und Geschwindigkeit lesen/setzten.
+- [ ] Position, Heading und Geschwindigkeit lesen/setzten: Heading und Weltgeschwindigkeit ab API 21 vom Nutzer im Spiel bestätigt; Fahrzeugposition bleibt vorerst lesbar.
 - [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 und Primär-/Sekundärfarbe ab API 20 vom Nutzer im Spiel bestätigt; weitere Steuerung folgt.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
@@ -173,6 +173,13 @@ API 20 ergänzt `Vehicle.primary_color` und `secondary_color` mit Palettenindize
 0..127. F2 im Infernus-Beispiel wechselt beide Farben durch.
 Release/x86-Build, 84 Python-Tests, 49 native Binding-Tests und Paketprüfung
 bestanden; Fahrzeugfarben vom Nutzer im Spiel bestätigt.
+
+API 21 ergänzt `Vehicle.heading` in Grad und `velocity` als Weltvektor in m/s
+(maximal 200 m/s). Beispiel: F1 dreht 90°, G setzt 54 km/h vorwärts beim Fahren,
+H setzt die lineare Geschwindigkeit auf null. Spielersteuerung bleibt erhalten;
+NPC-Fahrer, Wracks, Anhänger und Übergangszustände werden für Setter abgelehnt.
+Release/x86-Build, 85 Python-Tests, 52 native Binding-Tests und Paketprüfung
+bestanden; Heading und Geschwindigkeit vom Nutzer im Spiel bestätigt.
 
 ## 7. Peds, Objekte und Welt
 

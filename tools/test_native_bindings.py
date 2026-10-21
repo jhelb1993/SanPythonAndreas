@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 20)
+        self.assertEqual(sa._host_api_version, 21)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,71 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_heading_normalization_velocity_and_detached_values(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        other = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value, expected in ((-90, 270), (450, 90), (360, 0), (1e300, 1e300 % 360)):
+            sa._set_vehicle_heading(car, value)
+            self.assertAlmostEqual(sa._vehicle_motion(car)[0], expected, places=4)
+        sa._set_vehicle_velocity(car, sa.Vector3(3, 4, 0))
+        old = sa._vehicle_motion(car)[1]
+        self.assertEqual(tuple(old), (3, 4, 0))
+        self.assertEqual(old.length(), 5)
+        sa._set_vehicle_heading(car, 90)
+        self.assertEqual(tuple(sa._vehicle_motion(car)[1]), (3, 4, 0))
+        sa._set_vehicle_velocity(car, sa.Vector3())
+        self.assertEqual(tuple(old), (3, 4, 0))
+        self.assertEqual(tuple(sa._vehicle_motion(car)[1]), (0, 0, 0))
+        self.assertEqual(sa._vehicle_motion(other)[0], 0)
+        self.assertEqual(tuple(sa._vehicle_motion(other)[1]), (0, 0, 0))
+
+    def test_vehicle_motion_validation_and_magnitude_bound(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value in (True, "90", None):
+            with self.assertRaises(TypeError):
+                sa._set_vehicle_heading(car, value)
+        for value in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                sa._set_vehicle_heading(car, value)
+        with self.assertRaises(TypeError):
+            sa._set_vehicle_velocity(car, (1, 2, 3))
+        for value in (sa.Vector3(201, 0, 0), sa.Vector3(150, 150, 0)):
+            with self.assertRaises(ValueError):
+                sa._set_vehicle_velocity(car, value)
+        sa._set_vehicle_velocity(car, sa.Vector3(120, 160, 0))
+        self.assertEqual(sa._vehicle_motion(car)[1].length(), 200)
+
+    def test_vehicle_motion_rejects_busy_wrecked_and_unsupported_cars(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        setters = (lambda: sa._set_vehicle_heading(car, 90),
+                   lambda: sa._set_vehicle_velocity(car, sa.Vector3(10, 0, 0)))
+        sa._test_vehicle_motion_blocked(car, True)
+        for action in setters:
+            with self.assertRaises(RuntimeError):
+                action()
+        self.assertEqual(sa._vehicle_motion(car)[0], 0)
+        self.assertEqual(tuple(sa._vehicle_motion(car)[1]), (0, 0, 0))
+        sa._test_vehicle_motion_blocked(car, False)
+        for wrecked, unsupported in ((True, False), (False, True)):
+            sa._test_vehicle_damage(car, wrecked, unsupported)
+            for action in setters:
+                with self.assertRaises(RuntimeError):
+                    action()
+        sa._test_vehicle_damage(car, False, False)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (*setters, lambda: sa._vehicle_motion(car)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._close_vehicle_handle(car)
+        for action in (*setters, lambda: sa._vehicle_motion(car)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_vehicle_colors_preserve_channels_other_cars_and_repairs(self):
         sa._test_model_loaded(411, True)

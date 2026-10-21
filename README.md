@@ -8,6 +8,7 @@ Save this as `SanPythonAndreas/scripts/main.py`. Keys are listed in the comments
 
 ```python
 from pathlib import Path
+import math
 import sanandreas as sa
 
 bookmark = None
@@ -250,6 +251,26 @@ def cycle_vehicle_colors():
         spawned_vehicle.primary_color = (spawned_vehicle.primary_color + 1) % 128
         spawned_vehicle.secondary_color = (spawned_vehicle.secondary_color + 1) % 128
         print("Colors:", spawned_vehicle.primary_color, spawned_vehicle.secondary_color)
+
+
+@key("F1")  # Rotate yaw by 90 degrees without rotating linear velocity.
+def turn_vehicle():
+    if spawned_vehicle is not None:
+        spawned_vehicle.heading += 90
+
+
+@key("G")  # Driver only: set forward velocity to 15 m/s (54 km/h).
+def accelerate_vehicle():
+    if spawned_vehicle is not None and spawned_vehicle.snapshot.is_driver:
+        angle = math.radians(spawned_vehicle.heading)
+        spawned_vehicle.velocity = sa.Vector3(-math.sin(angle) * 15, math.cos(angle) * 15, 0)
+        print("Speed (km/h):", spawned_vehicle.velocity.length() * 3.6)
+
+
+@key("H")  # Clear linear velocity once; gravity/input still apply afterwards.
+def stop_vehicle():
+    if spawned_vehicle is not None:
+        spawned_vehicle.velocity = sa.Vector3()
 
 
 @key("F4")  # Full repair: health, body, doors, windows, tyres and engine/fire state.

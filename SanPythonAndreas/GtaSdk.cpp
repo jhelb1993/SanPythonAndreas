@@ -794,6 +794,84 @@ int sdk::SetVehicleColor(DWORD token, int channel, int color) noexcept
     return 0;
 }
 
+namespace
+{
+    bool CanChangeVehicleMotion(CVehicle* vehicle) noexcept
+    {
+        return Accessible(vehicle, sizeof(CVehicle), true)
+            && vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE
+            && vehicle->m_nStatus != STATUS_WRECKED && vehicle->m_fHealth > 0
+            && std::isfinite(vehicle->m_fHealth)
+            && !vehicle->m_pTractor && !vehicle->m_pTrailer
+            && !vehicle->m_nPhysicalFlags.bAttachedToEntity
+            && !vehicle->m_nGettingInFlags && !vehicle->m_nGettingOutFlags && !vehicle->m_nNumGettingIn
+            && (!vehicle->m_pDriver || vehicle->m_pDriver == FindCurrentPlayer())
+            && !reinterpret_cast<bool (__cdecl*)()>(0x43E400)()
+            && (!vehicle->m_matrix || Accessible(vehicle->m_matrix, sizeof(CMatrix), true));
+    }
+
+    void WakeVehicle(CVehicle* vehicle) noexcept
+    {
+        // Keep STATUS_PLAYER intact: changing it would hand driving control to AI.
+        if (vehicle->m_nStatus == STATUS_SIMPLE)
+            reinterpret_cast<void (__cdecl*)(CVehicle*)>(0x423FC0)(vehicle);
+        vehicle->m_bIsStatic = false;
+        reinterpret_cast<void (__thiscall*)(CPhysical*)>(0x542800)(vehicle);
+    }
+}
+
+int sdk::VehicleMotion(DWORD token, SpaVehicleMotion* value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE) return 3;
+    if (vehicle->m_matrix && !Accessible(vehicle->m_matrix, sizeof(CMatrix))) return 1;
+    const float radians = reinterpret_cast<float (__thiscall*)(CPlaceable*)>(0x441DB0)(vehicle);
+    const auto& velocity = vehicle->m_vecMoveSpeed;
+    if (!std::isfinite(radians) || !std::isfinite(velocity.x)
+        || !std::isfinite(velocity.y) || !std::isfinite(velocity.z)) return 1;
+    double degrees = std::fmod(static_cast<double>(radians) * 180.0 / 3.14159265358979323846, 360.0);
+    if (degrees < 0) degrees += 360;
+    *value = {static_cast<float>(degrees), velocity.x * 50.0f, velocity.y * 50.0f, velocity.z * 50.0f};
+    if (value->heading >= 360) value->heading = 0;
+    return std::isfinite(value->x) && std::isfinite(value->y) && std::isfinite(value->z) ? 0 : 1;
+}
+
+int sdk::SetVehicleHeading(DWORD token, float degrees) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    if (!std::isfinite(degrees) || degrees < 0 || degrees >= 360) return 4;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (!CanChangeVehicleMotion(vehicle)) return 3;
+    reinterpret_cast<void (__thiscall*)(CPlaceable*, float)>(0x43E0C0)(
+        vehicle, degrees * 0.017453292519943295f);
+    vehicle->m_vecTurnSpeed.x = vehicle->m_vecTurnSpeed.y = vehicle->m_vecTurnSpeed.z = 0;
+    if (vehicle->m_pRwObject)
+    {
+        reinterpret_cast<void (__thiscall*)(CEntity*)>(0x446F90)(vehicle);
+        reinterpret_cast<void (__thiscall*)(CEntity*)>(0x532B00)(vehicle);
+    }
+    WakeVehicle(vehicle);
+    return 0;
+}
+
+int sdk::SetVehicleVelocity(DWORD token, float x, float y, float z) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
+        || static_cast<double>(x) * x + static_cast<double>(y) * y + static_cast<double>(z) * z > 40000) return 4;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (!CanChangeVehicleMotion(vehicle)) return 3;
+    vehicle->m_vecMoveSpeed.x = x / 50.0f;
+    vehicle->m_vecMoveSpeed.y = y / 50.0f;
+    vehicle->m_vecMoveSpeed.z = z / 50.0f;
+    WakeVehicle(vehicle);
+    return 0;
+}
+
 int sdk::RequestModel(int model, DWORD* token) noexcept
 {
     if (!game::IsGameThread() || !game::IsReady()) return 1;

@@ -574,3 +574,30 @@ The Infernus example and README bind F2 to advance both indices modulo 128.
 The user confirmed the vehicle colors in-game.
 Release/x86 build, 84 Python tests, 49 native binding tests and bundle
 verification passed.
+
+## Vehicle heading and velocity (API 21)
+
+`Vehicle.heading` reads degrees in [0,360); finite numeric assignments normalize
+to that range. The setter updates yaw and RenderWare state and clears angular
+velocity, matching the existing player heading implementation. Linear velocity
+remains in world coordinates and is not rotated with the car.
+
+`Vehicle.velocity` reads an immutable `Vector3` snapshot in metres per game second.
+Assign another `Vector3` to change world velocity once, up to magnitude 200 m/s.
+Use `vehicle.velocity.length()` for speed and multiply by 3.6 for km/h.
+Native m_vecMoveSpeed uses 50 simulation units per second: multiply by 50 when
+reading and divide by 50 when writing, consistent with GTA's
+[timer timestep definition](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Timer.h).
+Gravity, collisions and player input continue to apply; zero velocity is not a lock.
+
+Read/write requires active gameplay and a valid checked normal automobile.
+Setters reject wrecks, attachments/trailers, entry/exit/door transitions and cars
+with an NPC driver. Physics activation preserves STATUS_PLAYER; only STATUS_SIMPLE
+uses the SDK's SwitchVehicleToRealPhysics. No AI driving task is assigned.
+VehicleInfo snapshots remain unchanged.
+
+Infernus example and README: F1 adds 90 degrees, G sets forward velocity to
+15 m/s (54 km/h) while the player drives, H clears linear velocity.
+The user confirmed vehicle heading and velocity changes in-game.
+Release/x86 build, 85 Python tests, 52 native binding tests and bundle
+verification passed.

@@ -1,6 +1,7 @@
 """Import example_spawn_vehicle in main.py.
 
 C: spawn, E: driver, Q: exit, D: remove, F2: colors, F3: health 500, F4: repair.
+F1: turn 90 degrees, G: set forward speed to 15 m/s while driving, H: stop.
 
 Use outdoors with room next to the player. Exit before removing the car.
 """
@@ -90,6 +91,44 @@ def cycle_colors():
     except (RuntimeError, ValueError) as error:
         print("Vehicle color change rejected:", error)
         sa.show_text("Cannot recolor this vehicle. See the Python log.")
+
+
+@sa.on_key_down("F1")
+def turn_infernus():
+    try:
+        if _vehicle is None:
+            sa.show_text("Spawn an Infernus with C first.")
+            return
+        _vehicle.heading += 90
+        sa.show_text(f"Heading: {_vehicle.heading:.0f} degrees.")
+    except RuntimeError as error:
+        print("Vehicle rotation rejected:", error)
+        sa.show_text("Cannot rotate this vehicle. See the Python log.")
+
+
+@sa.on_key_down("G")
+def accelerate_infernus():
+    try:
+        if _vehicle is None or not _vehicle.snapshot.is_driver:
+            sa.show_text("Enter your Infernus as driver with E first.")
+            return
+        angle = math.radians(_vehicle.heading)
+        _vehicle.velocity = sa.Vector3(-math.sin(angle) * 15, math.cos(angle) * 15, 0)
+        sa.show_text(f"Speed: {_vehicle.velocity.length() * 3.6:.0f} km/h.")
+    except (RuntimeError, ValueError) as error:
+        print("Vehicle acceleration rejected:", error)
+        sa.show_text("Cannot change velocity. See the Python log.")
+
+
+@sa.on_key_down("H")
+def stop_infernus():
+    try:
+        if _vehicle is not None:
+            _vehicle.velocity = sa.Vector3()
+            sa.show_text("Linear velocity cleared.")
+    except RuntimeError as error:
+        print("Vehicle stop rejected:", error)
+        sa.show_text("Cannot stop this vehicle. See the Python log.")
 
 
 @sa.on_key_down("F3")

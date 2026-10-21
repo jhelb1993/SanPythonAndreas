@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 20
+        self.api._host_api_version = 21
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -89,6 +89,10 @@ class RuntimeTests(unittest.TestCase):
         self.vehicle_colors = {}
         self.api._vehicle_colors = self.read_vehicle_colors
         self.api._set_vehicle_color = self.set_vehicle_color
+        self.vehicle_motion = {}
+        self.api._vehicle_motion = self.read_vehicle_motion
+        self.api._set_vehicle_heading = self.set_vehicle_heading
+        self.api._set_vehicle_velocity = self.set_vehicle_velocity
         self.repair_count = 0
         self.exit_pending = False
         self.seat_busy = False
@@ -300,6 +304,27 @@ class RuntimeTests(unittest.TestCase):
             raise ValueError("color out of bounds")
         self.read_vehicle_colors(token)
         self.vehicle_colors[self.vehicle_handles[token]][channel] = value
+
+    def read_vehicle_motion(self, token):
+        self.vehicle_info(token)
+        return self.vehicle_motion.setdefault(self.vehicle_handles[token], [0, (0, 0, 0)])
+
+    def set_vehicle_heading(self, token, value):
+        self.require_game_thread()
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("heading must be numeric")
+        import math
+        if not math.isfinite(value):
+            raise ValueError("heading must be finite")
+        self.read_vehicle_motion(token)[0] = value % 360
+
+    def set_vehicle_velocity(self, token, value):
+        self.require_game_thread()
+        if not all(hasattr(value, name) for name in ("x", "y", "z")):
+            raise TypeError("velocity requires Vector3")
+        if value.x ** 2 + value.y ** 2 + value.z ** 2 > 40000:
+            raise ValueError("speed too high")
+        self.read_vehicle_motion(token)[1] = value
 
     def read_weapon(self):
         if self.stats is None:
@@ -564,7 +589,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 20
+        self.api._host_api_version = 21
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1631,6 +1656,46 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_vehicle_heading_velocity_preserve_identity_and_reject_invalid_access(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        other = self.api.spawn_vehicle(411, (4, 5, 6))
+        velocity = types.SimpleNamespace(x=3, y=4, z=0)
+        car.velocity = velocity
+        car.heading = -90
+        self.assertEqual(car.heading, 270)
+        self.assertIs(car.velocity, velocity)
+        self.assertEqual(other.heading, 0)
+        car.velocity = types.SimpleNamespace(x=0, y=0, z=0)
+        self.assertEqual(velocity.x, 3)
+        for value in (True, "90", None):
+            with self.assertRaises(TypeError):
+                car.heading = value
+        for value in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                car.heading = value
+        with self.assertRaises(TypeError):
+            car.velocity = (1, 2, 3)
+        with self.assertRaises(ValueError):
+            car.velocity = types.SimpleNamespace(x=201, y=0, z=0)
+        self.game_thread = False
+        for action in (lambda: car.heading, lambda: car.velocity,
+                       lambda: setattr(car, "heading", 45), lambda: setattr(car, "velocity", velocity)):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.game_thread = True
+        self.stats = None
+        with self.assertRaises(RuntimeError):
+            _ = car.heading
+        self.stats = [25, 100]
+        self.invalid_vehicle_handles.add(car._token)
+        with self.assertRaises(self.api.InvalidVehicleError):
+            car.velocity = velocity
+        other.close()
+        for action in (lambda: other.heading, lambda: setattr(other, "heading", 90)):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
     def test_vehicle_colors_preserve_other_channel_and_vehicle(self):
         self.models_loaded.add(411)
         car = self.api.spawn_vehicle(411, (1, 2, 3))
@@ -1808,6 +1873,8 @@ raise RuntimeError('broken')
                 self.x, self.y, self.z = x, y, z
             def __add__(self, other):
                 return Vector(self.x + other.x, self.y + other.y, self.z + other.z)
+            def length(self):
+                return (self.x ** 2 + self.y ** 2 + self.z ** 2) ** 0.5
         self.api.Vector3 = Vector
         self.api._player_position = lambda: Vector(*self.position)
         self.script((RUNTIME / "scripts" / "example_spawn_vehicle.py").read_text(encoding="utf-8"))
@@ -1831,6 +1898,17 @@ raise RuntimeError('broken')
         self.assertEqual(self.model_leases, {})
         press("E")
         self.assertTrue(self.api.player().is_driver)
+        self.keys.clear()
+        self.runtime._tick(True)
+        self.keys.add(0x70)  # F1
+        self.runtime._tick(True)
+        motion = self.vehicle_motion[next(iter(self.owned_vehicles))]
+        self.assertEqual(motion[0], 90)
+        press("G")
+        self.assertAlmostEqual(motion[1].length(), 15)
+        self.assertAlmostEqual(motion[1].x, -15)
+        press("H")
+        self.assertEqual(motion[1].length(), 0)
         self.keys.clear()
         self.runtime._tick(True)
         self.keys.add(0x71)  # F2

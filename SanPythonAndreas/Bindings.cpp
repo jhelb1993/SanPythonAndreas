@@ -98,6 +98,18 @@ namespace
         }
     }
 
+    void VehicleMotionStatus(int status)
+    {
+        switch (status)
+        {
+        case 0: return;
+        case 2: throw InvalidVehicle("vehicle was removed or its handle closed");
+        case 3: throw std::runtime_error("requires a normal, non-wrecked, unattached car without NPC driver or entry/exit/door transitions");
+        case 4: throw py::value_error("invalid heading or velocity (maximum magnitude 200 m/s)");
+        default: throw std::runtime_error("vehicle motion requires active gameplay and finite vehicle state");
+        }
+    }
+
     void SetPlayerHealth(py::handle value)
     {
         RequireGameThread();
@@ -320,6 +332,32 @@ PYBIND11_MODULE(sanandreas, module)
         VehicleColorStatus(host->vehicleColors(
             BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &primary, &secondary));
         return py::make_tuple(primary, secondary);
+    });
+    module.def("_vehicle_motion", [](py::handle token) {
+        RequireGameThread();
+        SpaVehicleMotion value{};
+        VehicleMotionStatus(host->vehicleMotion(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &value));
+        return py::make_tuple(value.heading, Vector3(value.x, value.y, value.z));
+    });
+    module.def("_set_vehicle_heading", [](py::handle token, py::handle value) {
+        RequireGameThread();
+        if (py::isinstance<py::bool_>(value)) throw py::type_error("heading must be a number, not bool");
+        const double number = PyFloat_AsDouble(value.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (!std::isfinite(number)) throw py::value_error("heading must be finite");
+        double degrees = std::fmod(number, 360.0);
+        if (degrees < 0) degrees += 360;
+        float normalized = static_cast<float>(degrees);
+        if (normalized >= 360) normalized = 0;
+        VehicleMotionStatus(host->setVehicleHeading(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), normalized));
+    });
+    module.def("_set_vehicle_velocity", [](py::handle token, const Vector3& value) {
+        RequireGameThread();
+        if (value.x * value.x + value.y * value.y + value.z * value.z > 40000)
+            throw py::value_error("velocity magnitude must be at most 200 m/s");
+        VehicleMotionStatus(host->setVehicleVelocity(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"),
+            static_cast<float>(value.x), static_cast<float>(value.y), static_cast<float>(value.z)));
     });
     module.def("_set_vehicle_color", [](py::handle token, py::handle channel, py::handle color) {
         RequireGameThread();

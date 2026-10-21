@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 struct SpaPlayerVehicle;
+struct SpaVehicleMotion;
 namespace sdk
 {
     bool HasPlayer() noexcept;
@@ -31,6 +32,9 @@ namespace sdk
     int RepairVehicle(DWORD token) noexcept;
     int VehicleColors(DWORD token, int* primary, int* secondary) noexcept;
     int SetVehicleColor(DWORD token, int channel, int color) noexcept;
+    int VehicleMotion(DWORD token, SpaVehicleMotion* value) noexcept;
+    int SetVehicleHeading(DWORD token, float degrees) noexcept;
+    int SetVehicleVelocity(DWORD token, float x, float y, float z) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;
