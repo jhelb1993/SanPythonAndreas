@@ -141,8 +141,8 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
 - [ ] Position, Heading und Geschwindigkeit lesen/setzten.
-- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 implementiert, Spielabnahme offen; weitere Steuerung folgt.
-- [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 implementiert, Spielabnahme offen; Peds folgen.
+- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 vom Nutzer im Spiel bestätigt; weitere Steuerung folgt.
+- [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
 - [ ] Fahrzeugverlust und Zerstörung über Handles korrekt behandeln.
 
@@ -154,10 +154,12 @@ API 18 ergänzt `Player.enter_vehicle(vehicle, seat=-1)` (sofortiges Einsetzen;
 (animierter Ausstiegsauftrag, zu Fuß ohne Wirkung). Nur stehende normale Autos
 ohne Anhänger; Einsetzen erfordert denselben Innenbereich und höchstens 50 m
 Entfernung. Belegte Sitze werden nicht übernommen. Das Infernus-Beispiel nutzt
-E für den Fahrersitz und Q zum Aussteigen. Spielabnahme offen.
+E für den Fahrersitz und Q zum Aussteigen. Spielersteuerung nach dem Einstieg
+vom Nutzer im Spiel bestätigt.
 Spieltest-Rückmeldung: E setzte zusätzlich eine KI-Fahraufgabe und blockierte die
 Spielersteuerung. 0.18.0-dev.2 ersetzt den Einstieg durch reine GTA-Sitzwechsel-
-Tasks mit anschließender normaler Spielersteuerung. Erneuter Spieltest offen.
+Tasks mit anschließender normaler Spielersteuerung. Steuerungsfix vom Nutzer
+im Spiel bestätigt.
 Prüfstand API 18 / 0.18.0-dev.2: Release/x86-Build, 81 Python-Tests, 43 native Binding-Tests
 und Paketprüfung bestanden.
 
@@ -165,7 +167,7 @@ API 19 ergänzt schreibbare Fahrzeuggesundheit (0..1000) und vollständige Repar
 normaler Autos über geprüfte Handles. Das Infernus-Beispiel nutzt F3 für
 Gesundheit 500 und F4 für Reparatur. Wracks werden nicht wiederbelebt.
 Release/x86-Build, 83 Python-Tests, 46 native Binding-Tests und Paketprüfung
-bestanden; Spielabnahme offen.
+bestanden; Reparatur vom Nutzer im Spiel bestätigt.
 
 ## 7. Peds, Objekte und Welt
 

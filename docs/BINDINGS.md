@@ -513,8 +513,8 @@ its vehicle reference; no autonomous driving task is installed.
 `CPedIntelligence::ClearTasks(true, false)` (0x601420) then selects GTA's normal
 in-car task through its event path, preserving secondary tasks. The common
 execution helper has native tests for control restoration, failed processing
-and temporary reference cleanup. GTA input/control behavior still needs a
-repeat game test.
+and temporary reference cleanup. The user confirmed working player control
+after entry in the repeat game test.
 
 Passenger tasks take a door ID: indices are mapped using
 ComputeTargetDoorToEnterAsPassenger and checked through
@@ -530,7 +530,7 @@ Completion is asynchronous and can be delayed or interrupted by GTA; use
 Q requests exit and D removes the empty car. README and editor stubs include the
 same API. The first Release/x86 build passed 81 Python tests, 41 native binding
 tests and bundle verification; these did not cover GTA's autonomous-driving
-side effect. The control fix requires renewed game acceptance.
+side effect. The user subsequently confirmed the control fix in-game.
 Version 0.18.0-dev.2 passed Release/x86 build, 81 Python tests, 43 native tests
 and bundle verification.
 
@@ -551,7 +551,8 @@ entry/exit/door transitions are rejected. Captured cars can be repaired too;
 creation ownership is required only for deletion.
 
 The Infernus example and README use F3 to set health to 500 and F4 for full repair.
-An old snapshot keeps its original value. Game acceptance is pending, including
-visual repairs, punctured tyres, broken windows and fire extinguishing.
+An old snapshot keeps its original value. The user confirmed repair in-game.
+Individual damage types, including punctured tyres, broken windows and fire,
+have not been separately reported as tested.
 Release/x86 build, 83 Python tests, 46 native binding tests and bundle
 verification passed.
