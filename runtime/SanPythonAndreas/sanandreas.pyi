@@ -54,6 +54,21 @@ class Player:
     @armour.setter
     def armour(self, value: float) -> None: ...
     @property
+    def money(self) -> int:
+        """Current balance. Setter accepts integers 0..999999999; HUD updates immediately."""
+        ...
+    @money.setter
+    def money(self, value: int) -> None: ...
+    @property
+    def wanted_level(self) -> int:
+        """Stars 0..6; setter respects the game's current maximum and cheats.
+
+        Read back after setting to obtain the effective level. This is not a lock.
+        """
+        ...
+    @wanted_level.setter
+    def wanted_level(self, value: int) -> None: ...
+    @property
     def max_health(self) -> float: ...
     @property
     def position(self) -> Vector3:

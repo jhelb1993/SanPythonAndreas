@@ -8,6 +8,8 @@
 #include <CCamera.h>
 #include <CEntryExitManager.h>
 #include <CTimeCycle.h>
+#include <CPlayerInfo.h>
+#include <CWanted.h>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -19,6 +21,8 @@ static_assert(sizeof(void*) == 4);
 static_assert(offsetof(CPed, m_fHealth) == 0x540);
 static_assert(offsetof(CPed, m_fMaxHealth) == 0x544);
 static_assert(offsetof(CPed, m_fArmour) == 0x548);
+static_assert(offsetof(CPlayerInfo, m_nMoney) == 0xB8);
+static_assert(offsetof(CWanted, m_nWantedLevel) == 0x2C);
 
 namespace
 {
@@ -38,6 +42,31 @@ namespace
             return false;
         return !writable || (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY
             | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY));
+    }
+
+    CPlayerInfo* CurrentPlayerInfo() noexcept
+    {
+        if (!game::IsGameThread() || !game::IsReady()) return nullptr;
+        // Pinned CWorld.cpp: PlayerInFocus and Players[2].
+        const auto* focus = reinterpret_cast<const unsigned char*>(0xB7CD74);
+        if (!Accessible(focus, sizeof(*focus)) || *focus > 1) return nullptr;
+        auto* info = reinterpret_cast<CPlayerInfo*>(0xB7CD98) + *focus;
+        if (!Accessible(info, sizeof(CPlayerInfo), true)
+            || !info->m_pPed || info->m_pPed != FindCurrentPlayer()) return nullptr;
+        return info;
+    }
+
+    CWanted* CurrentWanted(CPlayerInfo* info, bool writable = false) noexcept
+    {
+        if (!info) return nullptr;
+        CWanted* wanted = info->m_PlayerData.m_pWanted;
+        return wanted && Accessible(wanted, sizeof(CWanted), writable) ? wanted : nullptr;
+    }
+
+    bool LivingPlayer() noexcept
+    {
+        float health = 0, maximum = 0;
+        return sdk::ReadPlayerHealth(&health, &maximum) && health > 0;
     }
 
     int ControlledEntity(CPed* player, CPhysical*& entity) noexcept
@@ -109,6 +138,45 @@ bool sdk::WritePlayerArmour(float value) noexcept
     CPed* player = FindCurrentPlayer();
     if (!player || !Accessible(&player->m_fArmour, sizeof(float), true)) return false;
     player->m_fArmour = value;
+    return true;
+}
+
+bool sdk::ReadPlayerMoney(int* value) noexcept
+{
+    const auto* info = CurrentPlayerInfo();
+    if (!info) return false;
+    *value = info->m_nMoney;
+    return true;
+}
+
+bool sdk::WritePlayerMoney(int value) noexcept
+{
+    if (value < 0 || value > 999999999 || !LivingPlayer()) return false;
+    auto* info = CurrentPlayerInfo();
+    if (!info) return false;
+    info->m_nMoney = value;
+    // Synchronize the HUD immediately instead of animating from the old value.
+    info->m_nDisplayMoney = value;
+    return true;
+}
+
+bool sdk::ReadPlayerWantedLevel(int* value) noexcept
+{
+    const auto* wanted = CurrentWanted(CurrentPlayerInfo());
+    if (!wanted || wanted->m_nWantedLevel > 6) return false;
+    *value = static_cast<int>(wanted->m_nWantedLevel);
+    return true;
+}
+
+bool sdk::WritePlayerWantedLevel(int value) noexcept
+{
+    if (value < 0 || value > 6 || !LivingPlayer()) return false;
+    auto* wanted = CurrentWanted(CurrentPlayerInfo(), true);
+    if (!wanted) return false;
+    // SetWantedLevel updates crime queue, chaos and pursuit parameters too.
+    // Respect game/mission limits and cheats; never alter the global maximum.
+    using SetWanted = void (__thiscall*)(CWanted*, int);
+    reinterpret_cast<SetWanted>(0x562470)(wanted, value);
     return true;
 }
 

@@ -342,4 +342,42 @@ import example_armour
 ```
 
 ASI und Datenordner gemeinsam aus `Release` aktualisieren. F9 füllt die Rüstung
-auf 100 auf. Spieltest dieser Erweiterung steht noch aus.
+auf 100 auf. Funktion vom Nutzer im Spiel bestätigt.
+
+## Geld und Fahndungslevel (API 8)
+
+Paket `0.8.0-dev.1`, Host-API 8:
+
+```python
+player = sa.player()
+if player is not None and player.health > 0:
+    player.money = 10000
+    player.wanted_level = 0
+    print(player.money, player.wanted_level)
+```
+
+`money` unterstützt beim Schreiben ganze Zahlen von 0 bis 999999999 und
+aktualisiert die Geldanzeige sofort. Lesen liefert den tatsächlichen Kontostand,
+auch bei negativen Werten aus anderen Spielmechaniken. `wanted_level` unterstützt
+ganze Zahlen von 0 bis 6. `bool`, Fließkommazahlen und Zeichenketten werden bei
+beiden Settern abgewiesen; zu große Python-Integer erzeugen `OverflowError`.
+Schreiben benötigt einen lebenden Spieler und den Spielthread.
+
+Der Fahndungslevel wird über GTAs `SetWantedLevel` gesetzt. Spiel-/Missionslimits
+und aktive Cheats werden berücksichtigt; der tatsächlich erreichte Level kann
+niedriger sein oder unverändert bleiben. Nach dem Setzen zurücklesen. Die API
+sperrt die Fahndung nicht dauerhaft: neue Straftaten können wieder Sterne auslösen.
+
+In der eigenen `main.py` für das Beispiel ergänzen:
+
+```python
+import example_money_wanted
+```
+
+- F10: 1000 Dollar hinzufügen, bis zum API-Limit.
+- F11: Fahndungslevel 0 anfordern.
+- F12: Fahndungslevel 3 anfordern; HUD und Log zeigen den tatsächlichen Wert.
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+Geldanzeige und Kontostand kontrollieren, Sterne erhöhen und wieder entfernen;
+Pause, Fokuswechsel, Fahrzeug sowie fehlenden/toten Spieler berücksichtigen.

@@ -12,6 +12,32 @@ namespace
     bool onThread = true, ready = true;
     float health = 25, maximum = 100;
     float armour = 10;
+    int money = 500, wantedLevel = 1, wantedMaximum = 6;
+    bool wantedBlocked = false;
+    BOOL __cdecl ReadMoney(int* value)
+    {
+        if (!ready) return FALSE;
+        *value = money;
+        return TRUE;
+    }
+    BOOL __cdecl WriteMoney(int value)
+    {
+        if (!ready || health <= 0 || value < 0 || value > 999999999) return FALSE;
+        money = value;
+        return TRUE;
+    }
+    BOOL __cdecl ReadWantedLevel(int* value)
+    {
+        if (!ready) return FALSE;
+        *value = wantedLevel;
+        return TRUE;
+    }
+    BOOL __cdecl WriteWantedLevel(int value)
+    {
+        if (!ready || health <= 0 || value < 0 || value > 6) return FALSE;
+        if (!wantedBlocked) wantedLevel = value < wantedMaximum ? value : wantedMaximum;
+        return TRUE;
+    }
     BOOL __cdecl ReadArmour(float* value)
     {
         if (!ready) return FALSE;
@@ -80,7 +106,8 @@ namespace
         return 0;
     }
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
-        KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour};
+        KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
+        ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -89,7 +116,9 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
-    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; armour = 10; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
+    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; armour = 10; money = 500; wantedLevel = 1; wantedMaximum = 6; wantedBlocked = false; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
+    module.def("_test_wanted_maximum", [](int value) { wantedMaximum = value; });
+    module.def("_test_wanted_blocked", [](bool value) { wantedBlocked = value; });
     module.def("_test_thread", [](bool value) { onThread = value; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });

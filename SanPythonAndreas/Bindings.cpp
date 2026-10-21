@@ -80,6 +80,17 @@ namespace
             throw py::value_error("text must contain 1 to 200 ASCII characters without NUL");
         host->showText(text.c_str());
     }
+
+    int BoundedInteger(py::handle value, long maximum, const char* name)
+    {
+        if (py::isinstance<py::bool_>(value) || !py::isinstance<py::int_>(value))
+            throw py::type_error(std::string(name) + " must be an integer, not bool");
+        const long number = PyLong_AsLong(value.ptr());
+        if (PyErr_Occurred()) throw py::error_already_set();
+        if (number < 0 || number > maximum)
+            throw py::value_error(std::string(name) + " must be between 0 and " + std::to_string(maximum));
+        return static_cast<int>(number);
+    }
 }
 
 void bindings::SetHost(const SpaHostApi* api) noexcept
@@ -139,6 +150,28 @@ PYBIND11_MODULE(sanandreas, module)
         return host->hasFocus() != FALSE;
     });
     module.def("_player_health", &PlayerHealth);
+    module.def("_player_money", [] {
+        RequireGameThread();
+        int value = 0;
+        if (!host->playerMoney(&value)) throw std::runtime_error("no active player or money unavailable");
+        return value;
+    });
+    module.def("_set_player_money", [](py::handle value) {
+        RequireGameThread();
+        const int number = BoundedInteger(value, 999999999, "money");
+        if (!host->setPlayerMoney(number)) throw std::runtime_error("no active living player or money cannot be changed");
+    }, py::arg("value"));
+    module.def("_player_wanted_level", [] {
+        RequireGameThread();
+        int value = 0;
+        if (!host->playerWantedLevel(&value)) throw std::runtime_error("no active player or wanted level unavailable");
+        return value;
+    });
+    module.def("_set_player_wanted_level", [](py::handle value) {
+        RequireGameThread();
+        const int number = BoundedInteger(value, 6, "wanted_level");
+        if (!host->setPlayerWantedLevel(number)) throw std::runtime_error("no active living player or wanted level cannot be changed");
+    }, py::arg("value"));
     module.def("_player_armour", [] {
         RequireGameThread();
         float value = 0;

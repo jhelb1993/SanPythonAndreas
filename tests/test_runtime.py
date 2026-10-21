@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 7
+        self.api._host_api_version = 8
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -33,6 +33,13 @@ class RuntimeTests(unittest.TestCase):
         self.armour = 10.0
         self.api._player_armour = self.read_armour
         self.api._set_player_armour = self.set_armour
+        self.money = 500
+        self.wanted = 1
+        self.wanted_maximum = 6
+        self.api._player_money = lambda: self.read_player_value("money")
+        self.api._set_player_money = lambda value: self.set_player_value("money", value)
+        self.api._player_wanted_level = lambda: self.read_player_value("wanted")
+        self.api._set_player_wanted_level = lambda value: self.set_player_value("wanted", min(value, self.wanted_maximum))
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -61,6 +68,16 @@ class RuntimeTests(unittest.TestCase):
         else:
             sys.modules["sanandreas"] = self.previous_api
         self.temp.cleanup()
+
+    def read_player_value(self, name):
+        if self.stats is None:
+            raise RuntimeError("no active player")
+        return getattr(self, name)
+
+    def set_player_value(self, name, value):
+        if self.stats is None or self.stats[0] <= 0:
+            raise RuntimeError("no active living player")
+        setattr(self, name, value)
 
     def read_armour(self):
         if self.stats is None:
@@ -271,7 +288,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 7
+        self.api._host_api_version = 8
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -377,6 +394,52 @@ raise RuntimeError('broken')
         self.runtime._tick(True)
         self.assertEqual(self.armour, 50)
         self.assertEqual(self.output.count("Ruestung aufgefuellt!"), 2)
+        self.assertNotIn("Disabled failing callback", self.log())
+
+    def test_money_and_wanted_view_rechecks_player(self):
+        player = self.api.player()
+        self.assertEqual(player.money, 500)
+        self.assertEqual(player.wanted_level, 1)
+        player.money = 1500
+        player.wanted_level = 3
+        self.assertEqual((self.money, self.wanted), (1500, 3))
+        self.stats = None
+        for name in ("money", "wanted_level"):
+            with self.assertRaises(RuntimeError):
+                getattr(player, name)
+            with self.assertRaises(RuntimeError):
+                setattr(player, name, 0)
+        self.stats = [25, 100]
+        self.money, self.wanted = 100, 0
+        self.assertEqual((player.money, player.wanted_level), (100, 0))
+
+    def test_money_wanted_example_handles_keys_caps_and_missing_player(self):
+        self.script((RUNTIME / "scripts" / "example_money_wanted.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(key)
+            self.runtime._tick(True)
+        press(0x79)  # F10
+        self.assertEqual(self.money, 1500)
+        self.runtime._tick(True)
+        self.assertEqual(self.money, 1500)
+        self.money = 999999900
+        press(0x79)
+        self.assertEqual(self.money, 999999999)
+        self.wanted_maximum = 2
+        press(0x7B)  # F12
+        self.assertEqual(self.wanted, 2)
+        self.assertEqual(self.output[-1], "Fahndungslevel: 2")
+        press(0x7A)  # F11
+        self.assertEqual(self.wanted, 0)
+        count = len(self.output)
+        for stats in (None, [0, 100]):
+            self.stats = stats
+            for key in (0x79, 0x7A, 0x7B):
+                press(key)
+        self.assertEqual(len(self.output), count)
         self.assertNotIn("Disabled failing callback", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

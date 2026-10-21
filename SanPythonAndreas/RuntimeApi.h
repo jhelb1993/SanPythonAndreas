@@ -23,5 +23,9 @@ struct SpaHostApi
     int (__cdecl* setPlayerHeading)(float);
     BOOL (__cdecl* playerArmour)(float*);
     BOOL (__cdecl* setPlayerArmour)(float);
+    BOOL (__cdecl* playerMoney)(int*);
+    BOOL (__cdecl* setPlayerMoney)(int);
+    BOOL (__cdecl* playerWantedLevel)(int*);
+    BOOL (__cdecl* setPlayerWantedLevel)(int);
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

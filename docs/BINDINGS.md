@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.7.0-dev.1`.
-- Aktuelle interne Host-API: Version `7` (Rüstung lesen und setzen).
+- Aktuelle Paketversion: `0.8.0-dev.1`.
+- Aktuelle interne Host-API: Version `8` (Geld und Fahndungslevel).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 17 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 20 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `7` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `8` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -156,7 +156,7 @@ Streaming, Kamera und Kollisionsverhalten müssen im Spiel geprüft werden.
 Prüfstand API 6: Release/x86-Build, 15 native Binding-Tests, Paketprüfung und
 21 Python-Runtime-Tests bestanden. Der Nutzer hat die Funktion im Spiel bestätigt.
 
-## Rüstung (API 7, Spielabnahme offen)
+## Rüstung (API 7, vom Nutzer bestätigt)
 
 ABI um `playerArmour(float*)` und `setPlayerArmour(float)` erweitert.
 `GtaSdk.cpp` verwendet `CPed::m_fArmour`, mit Layoutprüfung auf Offset 0x548.
@@ -172,4 +172,30 @@ Runtime-Tests prüfen Spielerwechsel und das F9-Beispiel einschließlich Halten.
 Spielabnahme: Rüstung verlieren, F9 drücken, HUD und Log kontrollieren; auch
 Pause, Fokuswechsel, Fahrzeug und fehlenden/toten Spieler prüfen.
 Prüfstand API 7: Release/x86-Build, 17 native Tests, 23 Python-Tests und
+Paketprüfung bestanden. Die Funktion wurde vom Nutzer im Spiel bestätigt.
+
+## Geld und Fahndungslevel (API 8, Spielabnahme offen)
+
+ABI um vier Lese-/Schreibfunktionen für Integer ergänzt. `CWorld.cpp` im
+gepinnten SDK dokumentiert `PlayerInFocus` (0xB7CD74) und `Players` (0xB7CD98).
+Der Adapter prüft den Index (0..1), die Speicherregion und die Übereinstimmung
+des Info-Peds mit dem aktuellen Spieler. Kein Zeiger wird in Python gespeichert.
+Layoutprüfungen: `CPlayerInfo::m_nMoney` bei 0xB8, `CWanted::m_nWantedLevel`
+bei 0x2C. Geldsetter aktualisiert `m_nMoney` und `m_nDisplayMoney` gemeinsam.
+
+`CWanted` kommt aus `CPlayerInfo::m_PlayerData.m_pWanted`; Speicher wird vor
+Zugriff geprüft. Setzen verwendet `CWanted::SetWantedLevel` (0x562470), statt
+das Sterne-Feld direkt zu überschreiben. Spielmaximum und Cheats bleiben
+wirksam; es gibt keine dauerhaft gesperrte Fahndungsstufe.
+Quervergleich: [gta-reversed Wanted](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Wanted.cpp).
+
+Setter verlangen echte Python-Integer (kein bool): Geld 0..999999999,
+Sterne 0..6. Werte außerhalb des Bereichs: `ValueError`; Integer außerhalb
+von C-long: `OverflowError`. Schreiben verlangt lebenden Spieler; alle
+Zugriffe verlangen aktiven Spielzustand und Spielthread.
+
+Tests simulieren Grenzen, falsche Typen, Integer-Überlauf, Tod, Spielerwechsel,
+Threadprüfung, Spielmaximum und Cheats. Reale Geldanzeige, Verfolgung und
+GTA-Adressen brauchen die Spielabnahme. Beispiel: `example_money_wanted.py`.
+Prüfstand API 8: Release/x86-Build, 20 native Tests, 25 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.

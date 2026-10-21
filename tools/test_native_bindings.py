@@ -15,7 +15,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 7)
+        self.assertEqual(sa._host_api_version, 8)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -71,7 +71,9 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._set_player_health(100), lambda: sa._is_key_down(0x74), sa._has_focus, sa._player_position, sa._player_interior,
                  lambda: sa._teleport_player(sa.Vector3()), sa._player_heading,
                  lambda: sa._set_player_heading(90), sa._player_armour,
-                 lambda: sa._set_player_armour(100)]
+                 lambda: sa._set_player_armour(100), sa._player_money,
+                 lambda: sa._set_player_money(100), sa._player_wanted_level,
+                 lambda: sa._set_player_wanted_level(3)]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -100,6 +102,47 @@ class NativeBindingsTests(unittest.TestCase):
         for call in (sa._player_armour, lambda: sa._set_player_armour(100)):
             with self.assertRaises(RuntimeError):
                 call()
+
+    def test_money_and_wanted_read_write_bounds(self):
+        self.assertEqual(sa._player_money(), 500)
+        self.assertEqual(sa._player_wanted_level(), 1)
+        for setter, getter, maximum in ((sa._set_player_money, sa._player_money, 999999999),
+                                         (sa._set_player_wanted_level, sa._player_wanted_level, 6)):
+            for value in (0, 1, maximum):
+                setter(value)
+                self.assertEqual(getter(), value)
+            for value in (-1, maximum + 1):
+                with self.assertRaises(ValueError):
+                    setter(value)
+            for value in (True, False, 1.0, '1', None, float('nan'), float('inf')):
+                with self.assertRaises(TypeError):
+                    setter(value)
+            for value in (10**100, -10**100):
+                with self.assertRaises(OverflowError):
+                    setter(value)
+            self.assertEqual(getter(), maximum)
+        self.assertEqual(sa._player_health(), (25, 100))
+
+    def test_money_and_wanted_require_active_living_player_for_writes(self):
+        sa._test_dead()
+        for setter in (sa._set_player_money, sa._set_player_wanted_level):
+            with self.assertRaises(RuntimeError):
+                setter(0)
+        self.assertEqual(sa._player_money(), 500)
+        self.assertEqual(sa._player_wanted_level(), 1)
+        sa._test_ready(False)
+        for call in (sa._player_money, sa._player_wanted_level,
+                     lambda: sa._set_player_money(0), lambda: sa._set_player_wanted_level(0)):
+            with self.assertRaises(RuntimeError):
+                call()
+
+    def test_wanted_respects_host_limits_and_cheats(self):
+        sa._test_wanted_maximum(2)
+        sa._set_player_wanted_level(6)
+        self.assertEqual(sa._player_wanted_level(), 2)
+        sa._test_wanted_blocked(True)
+        sa._set_player_wanted_level(0)
+        self.assertEqual(sa._player_wanted_level(), 2)
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

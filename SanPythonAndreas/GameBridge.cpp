@@ -63,9 +63,14 @@ namespace
     {
         return sdk::WritePlayerArmour(value) ? TRUE : FALSE;
     }
+    BOOL __cdecl HostPlayerMoney(int* value) { return sdk::ReadPlayerMoney(value) ? TRUE : FALSE; }
+    BOOL __cdecl HostSetPlayerMoney(int value) { return sdk::WritePlayerMoney(value) ? TRUE : FALSE; }
+    BOOL __cdecl HostPlayerWantedLevel(int* value) { return sdk::ReadPlayerWantedLevel(value) ? TRUE : FALSE; }
+    BOOL __cdecl HostSetPlayerWantedLevel(int value) { return sdk::WritePlayerWantedLevel(value) ? TRUE : FALSE; }
     const SpaHostApi hostApi{sizeof(SpaHostApi), HostReady, HostThread,
         game::ShowText, game::StartupLog, HostKeyDown, HostFocus,
-        HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading, HostPlayerArmour, HostSetPlayerArmour};
+        HostPlayerHealth, HostSetPlayerHealth, spa::HostApiVersion, spa::PackageVersion, HostPlayerPosition, sdk::PlayerInterior, sdk::TeleportPlayer, sdk::ReadPlayerHeading, sdk::WritePlayerHeading, HostPlayerArmour, HostSetPlayerArmour,
+        HostPlayerMoney, HostSetPlayerMoney, HostPlayerWantedLevel, HostSetPlayerWantedLevel};
     SpaTickFunction runtimeTick = nullptr;
     bool runtimeAttempted = false;
 
@@ -180,7 +185,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 7; Python 3.11 + SDK + pybind11 + armour ---");
+    StartupLog("--- ASI loaded: host API 8; Python 3.11 + SDK + pybind11 + money + wanted level ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||
