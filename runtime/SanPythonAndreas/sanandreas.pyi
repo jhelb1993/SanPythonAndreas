@@ -65,7 +65,11 @@ class Player:
     @property
     def interior(self) -> int: ...
     def teleport(self, target: Vector3, *, interior: int | None = None) -> None:
-        """Current interior only. Driver vehicle moves too; speed is cleared.
+        """Optional interior switches world area; 0 is outside, None keeps it.
+
+        Driver vehicle and occupants move too; speed is cleared.
+        Calls during a door transition raise RuntimeError. Area changes reset
+        the camera and portal context; shop/mission scripts are not activated.
 
         Synchronously streams the destination; may briefly pause the game.
         Does not find ground or guarantee the destination is unobstructed.

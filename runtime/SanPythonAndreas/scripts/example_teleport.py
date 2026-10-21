@@ -1,4 +1,4 @@
-"""F7 saves position and heading; F8 restores both within the same interior.
+"""F7 saves position, interior and heading; F8 restores all three across areas.
 
 Load with `import example_teleport` in main.py. On foot or in the driver seat.
 Save on clear, level ground with room for your vehicle. No ground search occurs.

@@ -5,6 +5,9 @@
 #include <CHud.h>
 #include <CVehicle.h>
 #include <CStreaming.h>
+#include <CCamera.h>
+#include <CEntryExitManager.h>
+#include <CTimeCycle.h>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -120,13 +123,17 @@ int sdk::TeleportPlayer(float x, float y, float z, int interior) noexcept
 {
     // Deliberately bounded: this is a map teleport, not an arbitrary memory write.
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
-        || std::fabs(x) > 20000 || std::fabs(y) > 20000 || z < -1000 || z > 10000)
+        || std::fabs(x) > 20000 || std::fabs(y) > 20000 || z < -1000 || z > 10000
+        || interior < -1 || interior > 255)
         return 4;
     float health = 0, maximum = 0;
     if (!ReadPlayerHealth(&health, &maximum) || health <= 0) return 1;
     const int area = PlayerInterior();
     if (area < 0) return 1;
-    if (interior != -1 && interior != area) return 2;
+    const int targetArea = interior == -1 ? area : interior;
+    // Do not interfere with the game's door/fade transition, even within an area.
+    if (reinterpret_cast<decltype(&CEntryExitManager::WeAreInInteriorTransition)>(0x43E400)())
+        return 2;
     CPed* player = FindCurrentPlayer();
     CPhysical* entity = nullptr;
     const int status = ControlledEntity(player, entity);
@@ -138,6 +145,37 @@ int sdk::TeleportPlayer(float x, float y, float z, int interior) noexcept
     if (!Accessible(table, 15 * sizeof(void*)) || !table[14]) return 1;
     CVector target(*storage);
     target.x = x; target.y = y; target.z = z;
+    auto* worldArea = reinterpret_cast<int*>(0xB72914); // CGame::currArea
+    if (!Accessible(worldArea, sizeof(*worldArea), true)) return 1;
+    // Validate every occupant before changing anything. The driver vehicle moves
+    // with its occupants; their area codes must agree with the new world area.
+    CVehicle* vehicle = entity != player ? static_cast<CVehicle*>(entity) : nullptr;
+    if (vehicle)
+        for (CPed* passenger : vehicle->m_apPassengers)
+            if (passenger && !Accessible(passenger, sizeof(CPed), true)) return 1;
+    const bool changingArea = targetArea != area;
+    auto* entryStackSize = reinterpret_cast<int*>(0x96A7C4);
+    if (changingArea && !Accessible(entryStackSize, sizeof(*entryStackSize), true)) return 1;
+    *worldArea = targetArea;
+    player->m_nAreaCode = static_cast<unsigned char>(targetArea);
+    entity->m_nAreaCode = static_cast<unsigned char>(targetArea);
+    if (vehicle)
+        for (CPed* passenger : vehicle->m_apPassengers)
+            if (passenger) passenger->m_nAreaCode = static_cast<unsigned char>(targetArea);
+    if (changingArea)
+    {
+        // A coordinate teleport does not traverse an entry/exit portal. Discard
+        // the previous portal context (also used by radar world coordinates).
+        *entryStackSize = 0;
+        player->m_pEnex = nullptr;
+        if (vehicle)
+            for (CPed* passenger : vehicle->m_apPassengers)
+                if (passenger) passenger->m_pEnex = nullptr;
+        // Pinned CStreaming.cpp: unload the old area's buildings before loading
+        // the target. Extra interior colour must not leak into the next area.
+        reinterpret_cast<decltype(&CStreaming::RemoveBuildingsNotInArea)>(0x4094B0)(targetArea);
+        reinterpret_cast<decltype(&CTimeCycle::StopExtraColour)>(0x55FF20)(false);
+    }
     // Verified against pinned CStreaming.cpp; synchronous scene/collision load.
     reinterpret_cast<decltype(&CStreaming::LoadSceneCollision)>(0x40ED80)(&target);
     reinterpret_cast<decltype(&CStreaming::LoadScene)>(0x40EB70)(&target);
@@ -148,6 +186,12 @@ int sdk::TeleportPlayer(float x, float y, float z, int interior) noexcept
     entity->m_vecTurnSpeed.x = entity->m_vecTurnSpeed.y = entity->m_vecTurnSpeed.z = 0;
     player->m_vecMoveSpeed.x = player->m_vecMoveSpeed.y = player->m_vecMoveSpeed.z = 0;
     player->m_vecTurnSpeed.x = player->m_vecTurnSpeed.y = player->m_vecTurnSpeed.z = 0;
+    if (changingArea)
+    {
+        // TheCamera, RestoreWithJumpCut: pinned CCamera.cpp.
+        using RestoreCamera = void (__thiscall*)(CCamera*);
+        reinterpret_cast<RestoreCamera>(0x50BAB0)(reinterpret_cast<CCamera*>(0xB6F028));
+    }
     return 0;
 }
 

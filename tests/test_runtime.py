@@ -19,7 +19,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 5
+        self.api._host_api_version = 6
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -38,6 +38,7 @@ class RuntimeTests(unittest.TestCase):
         self.api._player_heading = lambda: self.heading
         self.api._set_player_heading = self.set_heading
         self.interior = 0
+        self.transition = False
         self.api._player_interior = lambda: self.interior
         self.api._teleport_player = self.teleport
         self.previous_api = sys.modules.get("sanandreas")
@@ -62,8 +63,10 @@ class RuntimeTests(unittest.TestCase):
         self.heading = value
 
     def teleport(self, target, interior=None):
-        if interior is not None and interior != self.interior:
-            raise RuntimeError("interior mismatch")
+        if self.transition:
+            raise RuntimeError("interior transition in progress")
+        if interior is not None:
+            self.interior = interior
         self.position = (target.x, target.y, target.z)
 
     def set_health(self, value):
@@ -255,7 +258,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 5
+        self.api._host_api_version = 6
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -299,11 +302,14 @@ raise RuntimeError('broken')
         self.position = (100, 200, 300)
         self.interior = 1
         self.heading = 180.0
+        self.transition = True
         press(0x77)
         self.assertEqual(self.position, (100, 200, 300))
         self.assertEqual(self.heading, 180.0)
-        self.interior = 0
+        self.assertEqual(self.interior, 1)
+        self.transition = False
         press(0x77)
+        self.assertEqual(self.interior, 0)
         self.assertEqual(self.position, (12.5, -34, 8))
         self.assertEqual(self.heading, 45.0)
         self.assertNotIn("Disabled failing callback", self.log())

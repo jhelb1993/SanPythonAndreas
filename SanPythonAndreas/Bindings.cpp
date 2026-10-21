@@ -184,7 +184,7 @@ PYBIND11_MODULE(sanandreas, module)
                                     static_cast<float>(target.z), area))
         {
         case 0: return;
-        case 2: throw std::runtime_error("interior changes are not supported; target must use the current interior");
+        case 2: throw std::runtime_error("interior transition in progress; wait until the door transition finishes");
         case 3: throw std::runtime_error("teleport requires the driver seat of a vehicle without trailers; trains are unsupported");
         case 4: throw py::value_error("invalid teleport target");
         default: throw std::runtime_error("no active living player or teleport unavailable");

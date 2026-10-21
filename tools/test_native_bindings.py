@@ -15,7 +15,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 5)
+        self.assertEqual(sa._host_api_version, 6)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -119,7 +119,8 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertEqual(sa._player_interior(), 0)
         sa._teleport_player(sa.Vector3(100, 200, 30))
         self.assertEqual(tuple(sa._player_position()), (100, 200, 30))
-        with self.assertRaisesRegex(RuntimeError, 'interior'):
+        sa._test_teleport_status(2)
+        with self.assertRaisesRegex(RuntimeError, 'transition'):
             sa._teleport_player(sa.Vector3(), 1)
         self.assertEqual(tuple(sa._player_position()), (100, 200, 30))
         sa._test_teleport_status(3)
@@ -131,6 +132,14 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_ready(False)
         with self.assertRaises(RuntimeError):
             sa._player_interior()
+
+    def test_teleport_switches_interiors_and_preserves_area_when_omitted(self):
+        for area in (1, 6, 255, 0):
+            sa._teleport_player(sa.Vector3(100, 200, 30), area)
+            self.assertEqual(sa._player_interior(), area)
+            self.assertEqual(tuple(sa._player_position()), (100, 200, 30))
+            sa._teleport_player(sa.Vector3())
+            self.assertEqual(sa._player_interior(), area)
 
     def test_teleport_rejects_invalid_targets_and_interiors(self):
         for target in (sa.Vector3(1e100, 0, 0), sa.Vector3(0, -20001, 0),

@@ -6,7 +6,7 @@ import traceback
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 5
+BOOTSTRAP_API_VERSION = 6
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -126,7 +126,7 @@ class Player:
         return sa._player_interior()
 
     def teleport(self, target, *, interior=None):
-        """Move within the current interior, including the vehicle when driving."""
+        """Move to target; optional interior switches world area (0 is outside)."""
         sa._teleport_player(target, interior)
 
     @property

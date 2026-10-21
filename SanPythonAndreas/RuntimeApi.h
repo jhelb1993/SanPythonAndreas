@@ -17,7 +17,7 @@ struct SpaHostApi
     const char* packageVersion;
     BOOL (__cdecl* playerPosition)(float*, float*, float*);
     int (__cdecl* playerInterior)(); // -1 if unavailable
-    // 0 success; 1 unavailable/dead; 2 interior mismatch; 3 unsupported vehicle; 4 invalid target
+    // 0 success; 1 unavailable/dead; 2 door transition active; 3 unsupported vehicle; 4 invalid target
     int (__cdecl* teleportPlayer)(float, float, float, int); // interior -1 = current
     int (__cdecl* playerHeading)(float*); // degrees; status codes as above
     int (__cdecl* setPlayerHeading)(float);

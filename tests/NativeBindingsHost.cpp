@@ -40,12 +40,13 @@ namespace
         return TRUE;
     }
     int teleportStatus = 0;
-    int __cdecl Interior() { return ready ? 0 : -1; }
+    int currentArea = 0;
+    int __cdecl Interior() { return ready ? currentArea : -1; }
     int __cdecl Teleport(float x, float y, float z, int area)
     {
         if (!ready || health <= 0) return 1;
-        if (area != -1 && area != 0) return 2;
         if (teleportStatus) return teleportStatus;
+        if (area != -1) currentArea = area;
         positionX = x; positionY = y; positionZ = z;
         return 0;
     }
@@ -75,7 +76,7 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
-    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; heading = 45; headingStatus = 0; });
+    module.def("_test_reset", [] { onThread = ready = true; health = 25; maximum = 100; lastText.clear(); positionAvailable = true; positionX = 12.5f; positionY = -34; positionZ = 8; teleportStatus = 0; currentArea = 0; heading = 45; headingStatus = 0; });
     module.def("_test_thread", [](bool value) { onThread = value; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
