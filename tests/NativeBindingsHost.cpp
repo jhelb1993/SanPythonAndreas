@@ -56,6 +56,43 @@ namespace
     DWORD __cdecl GameTimeMs() { return gameTimeMs; }
     int vehicleState = 0;
     SpaPlayerVehicle vehicleData{411, TRUE, 750, 10, 20, 30};
+    struct FakeVehicleEntity { int generation; SpaPlayerVehicle data; };
+    struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
+    std::unordered_map<int, FakeVehicleEntity> handleVehicles;
+    std::unordered_map<DWORD, FakeVehicleHandle> vehicleHandles;
+    int currentVehicleId = 1;
+    DWORD nextVehicleToken = 0;
+    bool failVehicleReference = false;
+    int __cdecl CaptureVehicle(DWORD* token)
+    {
+        if (!ready || vehicleState < 0) return -1;
+        if (vehicleState == 0) return 0;
+        if (vehicleHandles.size() >= 128 || failVehicleReference) return -2;
+        auto inserted = handleVehicles.emplace(currentVehicleId, FakeVehicleEntity{0, vehicleData});
+        auto& entity = inserted.first->second;
+        entity.data = vehicleData;
+        *token = ++nextVehicleToken;
+        vehicleHandles.emplace(*token, FakeVehicleHandle{currentVehicleId, entity.generation, true});
+        return 1;
+    }
+    BOOL __cdecl VehicleValid(DWORD token)
+    {
+        if (!ready) return FALSE;
+        auto handle = vehicleHandles.find(token);
+        if (handle == vehicleHandles.end() || !handle->second.referenceAlive) return FALSE;
+        auto entity = handleVehicles.find(handle->second.entity);
+        return entity != handleVehicles.end() && entity->second.generation == handle->second.generation ? TRUE : FALSE;
+    }
+    int __cdecl VehicleInfo(DWORD token, SpaPlayerVehicle* value)
+    {
+        if (!ready) return -1;
+        if (!VehicleValid(token)) return -2;
+        const auto& handle = vehicleHandles.at(token);
+        *value = handleVehicles.at(handle.entity).data;
+        if (handle.entity != currentVehicleId || vehicleState != 1) value->isDriver = FALSE;
+        return 1;
+    }
+    void __cdecl CloseVehicle(DWORD token) { vehicleHandles.erase(token); }
     int __cdecl ReadVehicle(SpaPlayerVehicle* value)
     {
         if (!ready) return -1;
@@ -210,7 +247,7 @@ namespace
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
-        RequestModel, ModelReady, ReleaseModel};
+        RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -243,6 +280,27 @@ void InstallTestControls(py::module_& module)
     module.def("_test_vehicle_position", [](float x, float y, float z) {
         vehicleData.x = x; vehicleData.y = y; vehicleData.z = z;
     });
+    module.def("_test_reset_vehicle_handles", [] {
+        handleVehicles.clear(); vehicleHandles.clear(); currentVehicleId = 1; nextVehicleToken = 0; failVehicleReference = false;
+    });
+    module.def("_test_handle_current", [](int id) {
+        currentVehicleId = id;
+        auto found = handleVehicles.find(id);
+        if (found != handleVehicles.end()) vehicleData = found->second.data;
+    });
+    module.def("_test_handle_data", [](int id, float health, float x, float y, float z) {
+        auto& data = handleVehicles.at(id).data;
+        data.health = health; data.x = x; data.y = y; data.z = z;
+    });
+    module.def("_test_handle_remove_and_reuse", [](int id) {
+        for (auto& item : vehicleHandles)
+            if (item.second.entity == id) item.second.referenceAlive = false;
+        // Reuse the exact same simulated slot/generation, testing CReference protection.
+        auto& entity = handleVehicles.at(id);
+        entity.data = {400, FALSE, 1000, 100, 200, 300};
+        if (currentVehicleId == id) vehicleData = entity.data;
+    });
+    module.def("_test_handle_reference_failure", [](bool value) { failVehicleReference = value; });
     module.def("_test_ready", [](bool value) { ready = value; });
     module.def("_test_position", [](float x, float y, float z) { positionX = x; positionY = y; positionZ = z; });
     module.def("_test_position_available", [](bool value) { positionAvailable = value; });

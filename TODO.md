@@ -65,11 +65,11 @@ separat. Die aktuelle Spieleransicht bleibt vorerst ein Zugriff auf den jeweils
 aktuellen Spieler.
 
 - [x] `Vector3` mit `x`, `y`, `z` und grundlegenden Rechenoperationen anbieten.
-- [ ] Geprüfte Handles für Peds, Fahrzeuge und Objekte einführen.
-- [ ] Objektgültigkeit bei jedem nativen Zugriff prüfen; keine frei verfügbaren Rohzeiger.
-- [ ] Verhalten bei gelöschten Objekten, Tod, neuem Spiel und Spielstandwechsel festlegen.
+- [ ] Geprüfte Handles für Peds, Fahrzeuge und Objekte einführen: Fahrzeug-Handles in API 16 implementiert, Spielabnahme offen; Peds/Objekte folgen.
+- [ ] Objektgültigkeit bei jedem nativen Zugriff prüfen; keine frei verfügbaren Rohzeiger: für Fahrzeug-Handles ab API 16 implementiert.
+- [ ] Verhalten bei gelöschten Objekten, Tod, neuem Spiel und Spielstandwechsel festlegen: Fahrzeug-Poolgeneration plus GTA-Referenz in API 16, Reset-Cleanup; Spieltest offen.
 - [ ] Aktuelle Spieleransicht klar von einem Handle für einen bestimmten Ped unterscheiden.
-- [ ] Einheitliche Python-Ausnahmen für ungültige Objekte und falsche Threads definieren.
+- [ ] Einheitliche Python-Ausnahmen für ungültige Objekte und falsche Threads definieren: InvalidVehicleError ab API 16; andere Objekte folgen.
 - [ ] Besitz und Aufräumen von durch Skripte erzeugten Objekten festlegen.
 
 Abnahme: Ein Handle auf ein entferntes Objekt erzeugt eine verständliche
@@ -97,7 +97,7 @@ API 11 ergänzt Spielerzustände und eine Fahrzeug-Momentaufnahme; vom Nutzer im
 - [x] Geld und Fahndungslevel lesen und verändern: API 8 vom Nutzer im Spiel bestätigt.
 - [x] Maximale Gesundheit mit den Spielerstatistiken abgleichen: API 9 vom Nutzer im Spiel bestätigt.
 - [x] Waffen geben, auswählen und entfernen: API 10 vom Nutzer im Spiel bestätigt (zu Fuß, IDs 1..18/22..38/41..43). Sonderausrüstung folgt separat.
-- [x] Aktuelles Fahrzeug und Spielerzustände abfragen: API 11 vom Nutzer im Spiel bestätigt (unveränderliche Fahrzeugdaten, is_alive/in_vehicle/is_driver). Dauerhafte Fahrzeug-Handles folgen in der Objektgrundlage.
+- [x] Aktuelles Fahrzeug und Spielerzustände abfragen: API 11 vom Nutzer im Spiel bestätigt (unveränderliche Fahrzeugdaten, is_alive/in_vehicle/is_driver). Geprüfte Fahrzeug-Handles ergänzt API 16, Spielabnahme offen.
 
 Abnahme: F5 heilt, F6 zeigt die Position, ein weiteres Beispiel teleportiert
 kontrolliert zwischen zwei bekannten Positionen.

@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 15
+        self.api._host_api_version = 16
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -67,6 +67,16 @@ class RuntimeTests(unittest.TestCase):
         self.vehicle_data = None
         self.vehicle_error = False
         self.api._player_vehicle = self.read_vehicle
+        self.api.InvalidVehicleError = type("InvalidVehicleError", (RuntimeError,), {})
+        self.vehicle_objects = {}
+        self.vehicle_handles = {}
+        self.invalid_vehicle_handles = set()
+        self.current_vehicle_id = 1
+        self.next_vehicle_token = 0
+        self.api._capture_player_vehicle = self.capture_vehicle
+        self.api._vehicle_handle_valid = self.vehicle_handle_valid
+        self.api._vehicle_info = self.vehicle_info
+        self.api._close_vehicle_handle = self.close_vehicle
         self.position = (12.5, -34.0, 8.0)
         self.api._player_position = lambda: types.SimpleNamespace(
             x=self.position[0], y=self.position[1], z=self.position[2]
@@ -149,6 +159,36 @@ class RuntimeTests(unittest.TestCase):
         if lease is not None and lease["pinned"]:
             model = lease["model"]
             self.model_refs[model] -= 1
+
+    def capture_vehicle(self):
+        self.require_game_thread()
+        data = self.read_vehicle()
+        if data is None:
+            return None
+        self.vehicle_objects[self.current_vehicle_id] = data
+        self.next_vehicle_token += 1
+        self.vehicle_handles[self.next_vehicle_token] = self.current_vehicle_id
+        return self.next_vehicle_token
+
+    def vehicle_handle_valid(self, token):
+        self.require_game_thread()
+        return self.stats is not None and token in self.vehicle_handles and token not in self.invalid_vehicle_handles
+
+    def vehicle_info(self, token):
+        self.require_game_thread()
+        if self.stats is None:
+            raise RuntimeError("no active game")
+        if not self.vehicle_handle_valid(token):
+            raise self.api.InvalidVehicleError("vehicle removed or handle closed")
+        entity = self.vehicle_handles[token]
+        data = self.vehicle_objects[entity]
+        return types.SimpleNamespace(model_id=data.model_id, health=data.health, position=data.position,
+                                     is_driver=data.is_driver and entity == self.current_vehicle_id and self.vehicle_data is not None)
+
+    def close_vehicle(self, token):
+        self.require_game_thread()
+        self.vehicle_handles.pop(token, None)
+        self.invalid_vehicle_handles.discard(token)
 
     def read_vehicle(self):
         if self.stats is None or self.vehicle_error:
@@ -418,7 +458,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 15
+        self.api._host_api_version = 16
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1462,6 +1502,93 @@ raise RuntimeError('broken')
         self.execute_one_background_job()
         self.runtime._tick(True)
         self.assertEqual(len(self.output), count)
+        self.assertNotIn("Disabled failing", self.log())
+
+    def test_vehicle_handle_preserves_identity_after_exit_and_switch(self):
+        player = self.api.player()
+        self.assertIsNone(player.vehicle_handle)
+        self.vehicle_data = types.SimpleNamespace(model_id=411, health=750, is_driver=True, position=(1, 2, 3))
+        handle = player.vehicle_handle
+        old = handle.snapshot
+        self.assertTrue(handle.valid)
+        self.current_vehicle_id = 2
+        self.vehicle_data = types.SimpleNamespace(model_id=400, health=500, is_driver=True, position=(10, 20, 30))
+        other = player.vehicle_handle
+        self.vehicle_objects[1] = types.SimpleNamespace(model_id=411, health=600, is_driver=False, position=(4, 5, 6))
+        self.assertEqual((handle.model_id, handle.health, handle.position), (411, 600, (4, 5, 6)))
+        self.assertEqual((old.model_id, old.health), (411, 750))
+        self.assertEqual(other.model_id, 400)
+        self.vehicle_data = None
+        self.assertEqual(handle.model_id, 411)
+        handle.close()
+        handle.close()
+        self.assertTrue(handle.closed)
+        self.assertFalse(handle.valid)
+        with self.assertRaises(self.api.InvalidVehicleError):
+            _ = handle.health
+        self.assertTrue(other.valid)
+        other.close()
+
+    def test_vehicle_handle_rejects_reused_entity_and_context_close_never_deletes(self):
+        self.vehicle_data = types.SimpleNamespace(model_id=411, health=750, is_driver=True, position=(1, 2, 3))
+        player = self.api.player()
+        old = player.vehicle_handle
+        self.invalid_vehicle_handles.add(old._token)
+        self.vehicle_data = types.SimpleNamespace(model_id=400, health=1000, is_driver=True, position=(10, 20, 30))
+        with player.vehicle_handle as new:
+            self.assertFalse(old.valid)
+            with self.assertRaises(self.api.InvalidVehicleError):
+                _ = old.position
+            self.assertEqual(new.model_id, 400)
+        self.assertTrue(new.closed)
+        self.assertEqual(player.vehicle.model_id, 400)
+        old.close()
+
+    def test_vehicle_handle_missing_player_thread_guard_and_reset_cleanup(self):
+        self.script("pass")
+        self.runtime._tick(True)
+        self.vehicle_data = types.SimpleNamespace(model_id=411, health=750, is_driver=True, position=(1, 2, 3))
+        player = self.api.player()
+        handle = player.vehicle_handle
+        self.stats = None
+        self.assertFalse(handle.valid)
+        with self.assertRaises(RuntimeError):
+            _ = handle.model_id
+        self.stats = [25, 100]
+        self.game_thread = False
+        for call in (lambda: handle.valid, lambda: handle.snapshot, handle.close, lambda: player.vehicle_handle):
+            with self.assertRaises(RuntimeError):
+                call()
+        self.game_thread = True
+        self.game_ms = 0
+        self.runtime._tick(False)
+        self.assertTrue(handle.closed)
+        self.assertEqual(self.vehicle_handles, {})
+        self.assertEqual(self.runtime._vehicles, {})
+
+    def test_vehicle_handle_example_reads_saved_car_after_exit_and_closes(self):
+        self.script((RUNTIME / "scripts" / "example_vehicle_handles.py").read_text(encoding="utf-8"))
+        self.runtime._tick(True)
+        def press(key):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(ord(key))
+            self.runtime._tick(True)
+        self.vehicle_data = types.SimpleNamespace(model_id=411, health=750, is_driver=True, position=(1, 2, 3))
+        press("B")
+        self.vehicle_data = None
+        press("Z")
+        self.assertEqual(self.output[-1], "Gespeichert: Modell 411, Zustand 750")
+        self.invalid_vehicle_handles.update(self.vehicle_handles)
+        press("Z")
+        self.assertIn("existiert nicht mehr", self.output[-1])
+        self.current_vehicle_id = 2
+        self.vehicle_data = types.SimpleNamespace(model_id=400, health=1000, is_driver=False, position=(10, 20, 30))
+        press("B")
+        self.assertEqual(len(self.runtime._vehicles), 1)
+        press("X")
+        self.assertEqual(self.runtime._vehicles, {})
+        self.assertEqual(self.vehicle_data.model_id, 400)
         self.assertNotIn("Disabled failing", self.log())
 
     def test_heading_property_delegates_and_rechecks_current_value(self):

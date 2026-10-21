@@ -220,7 +220,7 @@ class WeaponType(IntEnum):
 
 
 class VehicleInfo:
-    """Immutable snapshot, not a handle. Read player.vehicle again to refresh."""
+    """Immutable snapshot; refresh via player.vehicle or a handle's snapshot property."""
     @property
     def model_id(self) -> int: ...
     @property
@@ -231,6 +231,38 @@ class VehicleInfo:
         ...
     @property
     def position(self) -> Vector3: ...
+
+
+class InvalidVehicleError(RuntimeError):
+    """The referenced vehicle was removed or its handle is closed/invalidated."""
+    ...
+
+
+class Vehicle:
+    """Checked handle to one vehicle. Created via player.vehicle_handle.
+
+    Unlike VehicleInfo, properties refresh the same object's data on every read.
+    The handle does not prevent despawning. Close explicitly or use with.
+    """
+    @property
+    def closed(self) -> bool: ...
+    @property
+    def valid(self) -> bool:
+        """False while inactive, after removal or closure. Game thread required for query."""
+        ...
+    @property
+    def snapshot(self) -> VehicleInfo: ...
+    @property
+    def model_id(self) -> int: ...
+    @property
+    def health(self) -> float: ...
+    @property
+    def position(self) -> Vector3: ...
+    def close(self) -> None:
+        """Idempotent on game thread, also during pause; never deletes the vehicle."""
+        ...
+    def __enter__(self) -> Vehicle: ...
+    def __exit__(self, exc_type: object, exc_value: object, exc_trace: object) -> bool: ...
 
 
 class Player:
@@ -299,6 +331,10 @@ class Player:
 
         Inconsistent seats during entry/exit and missing player raise RuntimeError.
         """
+        ...
+    @property
+    def vehicle_handle(self) -> Vehicle | None:
+        """Acquire a checked handle to this vehicle; None on foot. Close when unused."""
         ...
     @property
     def in_vehicle(self) -> bool: ...

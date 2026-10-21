@@ -18,9 +18,10 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_vehicle()
         sa._test_game_time(1000)
         sa._test_reset_models()
+        sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 15)
+        self.assertEqual(sa._host_api_version, 16)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -97,7 +98,8 @@ class NativeBindingsTests(unittest.TestCase):
                  lambda: sa._give_player_weapon(22), lambda: sa._select_player_weapon(0),
                  lambda: sa._remove_player_weapon(22), sa._clear_player_weapons, sa._player_vehicle,
                  sa._game_time_ms, sa._require_game_thread, lambda: sa._request_model(411),
-                 lambda: sa._model_ready(1), lambda: sa._release_model(1)]
+                 lambda: sa._model_ready(1), lambda: sa._release_model(1), sa._capture_player_vehicle,
+                 lambda: sa._vehicle_handle_valid(1), lambda: sa._vehicle_info(1), lambda: sa._close_vehicle_handle(1)]
         for call in calls:
             with self.assertRaisesRegex(RuntimeError, 'game thread'):
                 call()
@@ -352,6 +354,68 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(len(errors), 4)
         self.assertTrue(all('game thread' in error for error in errors))
+
+    def test_vehicle_handle_tracks_original_vehicle_after_exit_and_switch(self):
+        self.assertIsNone(sa._capture_player_vehicle())
+        sa._test_vehicle(1)
+        first = sa._capture_player_vehicle()
+        old_snapshot = sa._vehicle_info(first)
+        sa._test_handle_current(2)
+        sa._test_vehicle(1, 400, 500, True)
+        second = sa._capture_player_vehicle()
+        self.assertNotEqual(first, second)
+        sa._test_handle_data(1, 600, 40, 50, 60)
+        current = sa._vehicle_info(first)
+        self.assertEqual((current.model_id, current.health, current.is_driver), (411, 600, False))
+        self.assertEqual(tuple(current.position), (40, 50, 60))
+        self.assertEqual((old_snapshot.model_id, old_snapshot.health), (411, 750))
+        self.assertEqual(sa._vehicle_info(second).model_id, 400)
+        sa._test_vehicle(0)
+        self.assertTrue(sa._vehicle_handle_valid(first))
+        self.assertEqual(sa._vehicle_info(first).model_id, 411)
+        sa._close_vehicle_handle(first)
+        self.assertFalse(sa._vehicle_handle_valid(first))
+        self.assertTrue(sa._vehicle_handle_valid(second))
+
+    def test_vehicle_handle_rejects_reused_slot_even_when_generation_matches(self):
+        sa._test_vehicle(1)
+        old = sa._capture_player_vehicle()
+        sa._test_handle_remove_and_reuse(1)
+        self.assertFalse(sa._vehicle_handle_valid(old))
+        with self.assertRaises(sa.InvalidVehicleError):
+            sa._vehicle_info(old)
+        new = sa._capture_player_vehicle()
+        self.assertTrue(sa._vehicle_handle_valid(new))
+        self.assertEqual(sa._vehicle_info(new).model_id, 400)
+        sa._close_vehicle_handle(old)
+        self.assertTrue(sa._vehicle_handle_valid(new))
+
+    def test_vehicle_handles_validate_limits_pause_and_close(self):
+        self.assertTrue(issubclass(sa.InvalidVehicleError, RuntimeError))
+        sa._test_vehicle(1)
+        sa._test_handle_reference_failure(True)
+        with self.assertRaises(RuntimeError):
+            sa._capture_player_vehicle()
+        sa._test_handle_reference_failure(False)
+        handles = [sa._capture_player_vehicle() for _ in range(128)]
+        with self.assertRaises(RuntimeError):
+            sa._capture_player_vehicle()
+        sa._test_ready(False)
+        self.assertFalse(sa._vehicle_handle_valid(handles[0]))
+        with self.assertRaises(RuntimeError):
+            sa._vehicle_info(handles[0])
+        sa._close_vehicle_handle(handles[0])
+        sa._close_vehicle_handle(handles[0])
+        sa._test_ready(True)
+        replacement = sa._capture_player_vehicle()
+        self.assertNotEqual(replacement, handles[0])
+        self.assertEqual(sa._vehicle_info(replacement).model_id, 411)
+        for handle in handles + [replacement]:
+            sa._close_vehicle_handle(handle)
+        for value in (True, 1.0, '1', None):
+            for call in (sa._vehicle_handle_valid, sa._vehicle_info, sa._close_vehicle_handle):
+                with self.assertRaises(TypeError):
+                    call(value)
 
     def test_vector_operations(self):
         v = sa.Vector3(3, 4, 12)

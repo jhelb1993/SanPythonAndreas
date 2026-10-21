@@ -47,5 +47,10 @@ struct SpaHostApi
     int (__cdecl* requestModel)(int, DWORD*);
     int (__cdecl* modelReady)(DWORD); // 1 ready (own reference held), 0 pending, -1 unavailable/stale
     void (__cdecl* releaseModel)(DWORD); // own reference only; safe while paused
+    // capture: 1 acquired, 0 on foot, -1 unavailable, -2 limit/reference allocation failure
+    int (__cdecl* capturePlayerVehicle)(DWORD*);
+    BOOL (__cdecl* vehicleHandleValid)(DWORD);
+    int (__cdecl* vehicleHandleInfo)(DWORD, SpaPlayerVehicle*); // 1 success, -1 inactive, -2 invalid handle
+    void (__cdecl* closeVehicleHandle)(DWORD); // unregister only; never delete vehicle
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

@@ -20,6 +20,7 @@ Copy-Item -Force (Join-Path $source 'scripts\example_timers.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_tasks.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_models.py') $scripts
 Copy-Item -Force (Join-Path $source 'scripts\example_background.py') $scripts
+Copy-Item -Force (Join-Path $source 'scripts\example_vehicle_handles.py') $scripts
 $main = Join-Path $scripts 'main.py'
 if (-not (Test-Path -LiteralPath $main)) {
     Copy-Item (Join-Path $source 'scripts\main.py') $main

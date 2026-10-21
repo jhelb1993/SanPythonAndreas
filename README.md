@@ -478,8 +478,8 @@ lösen Eigenschaften wie bisher `RuntimeError` aus; `sa.player()` liefert `None`
 mit `model_id`, `health`, `position` (Vector3) und `is_driver`. Das ist eine
 abgetrennte Momentaufnahme ohne Spielzeiger. Gespeicherte Daten bleiben nach
 Aussteigen, Fahrzeugzerstörung oder Spielstandwechsel lesbar, aktualisieren sich
-aber nicht. Für aktuelle Werte `player.vehicle` erneut abfragen. Dauerhafte
-Handles, Fahrzeugänderungen und Spawn-Funktionen folgen separat.
+aber nicht. Für aktuelle Werte `player.vehicle` erneut abfragen. Geprüfte
+Handles ergänzt API 16; Fahrzeugänderungen und Spawn-Funktionen folgen separat.
 
 Die Sitzzuordnung wird gegen Fahrer und Passagierliste geprüft. Während eines
 unvollständigen Ein-/Ausstiegs kann `RuntimeError` auftreten; im nächsten Frame
@@ -749,3 +749,62 @@ P bricht die Ergebniszustellung ab. ASI und Datenordner gemeinsam aus `Release`
 aktualisieren. Spielabnahme offen: O drücken und weiterlaufen/fahren, Pause bis
 nach Ende der Arbeit halten und beim Fortsetzen die Meldung prüfen. O und direkt
 P darf keine spätere Ergebnismeldung liefern.
+
+## Geprüfte Fahrzeug-Handles (API 16)
+
+Paket `0.16.0-dev.1`, Host-API 16 ergänzt einen Zugriff auf ein bestimmtes Fahrzeug:
+
+```python
+player = sa.player()
+if player is not None:
+    vehicle = player.vehicle_handle
+    if vehicle is not None:
+        try:
+            print(vehicle.model_id, vehicle.health, vehicle.position)
+            snapshot = vehicle.snapshot
+        finally:
+            vehicle.close()
+```
+
+`player.vehicle` bleibt eine Momentaufnahme des aktuellen Fahrzeugs.
+`player.vehicle_handle` liefert dagegen einen neuen `Vehicle`-Handle oder zu Fuß
+None. Er bleibt an genau dieses Fahrzeug gebunden, auch nach Aussteigen oder
+Wechsel in ein anderes Fahrzeug. Jede Eigenschaft liest neu und prüft Pool,
+Objektgeneration und eine von GTA bei Entfernung geleerte Referenz. Es werden
+keine Rohzeiger in Python gespeichert. Auch bei Wiederverwendung des alten
+Poolslots soll der alte Handle nicht auf das neue Fahrzeug zugreifen.
+
+Lesbar sind `model_id`, `health`, `position` und `snapshot` (VehicleInfo).
+`snapshot.is_driver` beschreibt, ob der aktuelle Spieler dieses Fahrzeug fährt.
+Gespeicherte Snapshots bleiben unverändert. Entfernte oder geschlossene Handles
+lösen `sa.InvalidVehicleError` (Unterklasse von RuntimeError) aus. Bei Pause oder
+anderweitig inaktivem Spiel kann stattdessen RuntimeError auftreten.
+
+`valid` ist während aktiven Spiels wahr, wenn die Objektidentität noch stimmt;
+bei Pause/fehlendem Spieler ist es vorübergehend falsch. Das ist keine Aussage
+über Fahrbereitschaft oder Gesundheit: ein existierendes Wrack kann gültig sein.
+`closed` zeigt die ausdrückliche Freigabe des Handles an. `close()` ist auf dem
+Spielthread wiederholbar und auch während Pause erlaubt. Es entfernt nur die
+Referenz, niemals das Fahrzeug. Alternativ kann der Handle in einem with-Block
+verwendet werden. Ungenutzte Handles explizit schließen; keine GC-Freigabe.
+Maximal 128 offene Handles sind möglich, zusätzlich kann GTAs Referenzpool voll sein.
+
+Handles verhindern kein Despawning und machen ein fremdes Fahrzeug nicht
+skripteigen. Erkannte Uhrresets und globale Fehlerbereinigung schließen alle
+offenen Handles. GTA-Referenz, Pool und Generation werden unabhängig davon bei
+jedem Zugriff geprüft. Erzeugen, Verändern und Löschen folgen separat.
+
+Für das Beispiel in der eigenen `main.py` ergänzen:
+
+```python
+import example_vehicle_handles
+```
+
+- B: aktuelles Fahrzeug als Fahrer oder Passagier merken.
+- Z: das gemerkte Fahrzeug erneut lesen, auch nach Aussteigen/Fahrzeugwechsel.
+- X: Handle schließen; das Fahrzeug bleibt bestehen.
+
+ASI und Datenordner gemeinsam aus `Release` aktualisieren. Spielabnahme offen:
+B, aussteigen und Z; anderes Fahrzeug betreten und Z erneut prüfen. Gemerktes
+Fahrzeug entfernen lassen und die Ungültigkeitsmeldung kontrollieren. X darf
+das Fahrzeug nicht löschen. Pause, Tod und Spielstandwechsel berücksichtigen.

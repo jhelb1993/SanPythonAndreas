@@ -15,6 +15,8 @@
 #include "RuntimeApi.h"
 #include <CBaseModelInfo.h>
 #include <array>
+#include <CHeli.h>
+#include <CPool.h>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -44,6 +46,17 @@ namespace
     };
     std::array<ModelLease, 256> modelLeases{};
     DWORD nextModelToken = 0;
+    using VehiclePool = CPool<CVehicle, CHeli>;
+    struct VehicleHandle
+    {
+        DWORD token = 0;
+        CEntity* entity = nullptr; // Stable address registered in GTA's CReference list.
+        VehiclePool* pool = nullptr;
+        CHeli* objects = nullptr;
+        int ref = 0;
+    };
+    std::array<VehicleHandle, 128> vehicleHandles{};
+    DWORD nextVehicleToken = 0;
 
     CPed* FindCurrentPlayer() noexcept
     {
@@ -61,6 +74,63 @@ namespace
             return false;
         return !writable || (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY
             | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY));
+    }
+
+    VehiclePool* CheckedVehiclePool() noexcept
+    {
+        auto** address = reinterpret_cast<VehiclePool**>(0xB74494);
+        if (!Accessible(address, sizeof(*address))) return nullptr;
+        VehiclePool* pool = *address;
+        if (!pool || !Accessible(pool, sizeof(VehiclePool)) || !pool->m_pObjects || !pool->m_byteMap
+            || pool->m_nSize <= 0 || pool->m_nSize > 100000) return nullptr;
+        return pool;
+    }
+
+    bool HasVehicleReference(const CVehicle* vehicle, CEntity** target) noexcept
+    {
+        const CReference* ref = vehicle->m_pReferences;
+        for (int count = 0; ref && count < 4096; ++count)
+        {
+            if (!Accessible(ref, sizeof(CReference))) return false;
+            if (ref->m_ppEntity == target) return true;
+            ref = ref->m_pNext;
+        }
+        return false;
+    }
+
+    VehicleHandle* FindVehicleHandle(DWORD token) noexcept
+    {
+        if (!token) return nullptr;
+        for (auto& entry : vehicleHandles)
+            if (entry.token == token) return &entry;
+        return nullptr;
+    }
+
+    CVehicle* ResolveVehicleHandle(VehicleHandle* entry) noexcept
+    {
+        if (!entry || !entry->entity) return nullptr;
+        auto* pool = CheckedVehiclePool();
+        if (!pool || pool != entry->pool || pool->m_pObjects != entry->objects) return nullptr;
+        const int index = entry->ref >> 8;
+        if (index < 0 || index >= pool->m_nSize
+            || !Accessible(pool->m_byteMap + index, sizeof(tPoolObjectFlags))) return nullptr;
+        auto& flag = pool->m_byteMap[index];
+        if (flag.bEmpty || flag.IntValue() != (entry->ref & 0xFF)) return nullptr;
+        auto* vehicle = reinterpret_cast<CVehicle*>(pool->m_pObjects + index);
+        if (entry->entity != vehicle || !Accessible(vehicle, sizeof(CVehicle))
+            || vehicle->m_nType != ENTITY_TYPE_VEHICLE
+            || !HasVehicleReference(vehicle, &entry->entity)) return nullptr;
+        return vehicle;
+    }
+
+    bool ReadVehicleData(const CVehicle* vehicle, SpaPlayerVehicle* value) noexcept
+    {
+        const CVector* position = vehicle->m_matrix ? &vehicle->m_matrix->pos : &vehicle->m_placement.m_vPosn;
+        if (!Accessible(position, sizeof(CVector)) || !std::isfinite(vehicle->m_fHealth)
+            || !std::isfinite(position->x) || !std::isfinite(position->y) || !std::isfinite(position->z)) return false;
+        *value = {static_cast<int>(vehicle->m_nModelIndex), vehicle->m_pDriver == FindCurrentPlayer() ? TRUE : FALSE,
+            vehicle->m_fHealth, position->x, position->y, position->z};
+        return true;
     }
 
     CBaseModelInfo* ModelInfo(int model) noexcept
@@ -336,12 +406,66 @@ int sdk::ReadPlayerVehicle(SpaPlayerVehicle* value) noexcept
     for (const CPed* occupant : vehicle->m_apPassengers)
         if (occupant == player) passenger = true;
     if (!driver && !passenger) return -1; // Entering/exiting or inconsistent seat mapping.
-    const CVector* position = vehicle->m_matrix ? &vehicle->m_matrix->pos : &vehicle->m_placement.m_vPosn;
-    if (!Accessible(position, sizeof(CVector)) || !std::isfinite(vehicle->m_fHealth)
-        || !std::isfinite(position->x) || !std::isfinite(position->y) || !std::isfinite(position->z)) return -1;
-    *value = {static_cast<int>(vehicle->m_nModelIndex), driver ? TRUE : FALSE,
-        vehicle->m_fHealth, position->x, position->y, position->z};
+    return ReadVehicleData(vehicle, value) ? 1 : -1;
+}
+
+int sdk::CapturePlayerVehicle(DWORD* token) noexcept
+{
+    SpaPlayerVehicle snapshot{};
+    const int state = ReadPlayerVehicle(&snapshot);
+    if (state != 1) return state;
+    auto* player = FindCurrentPlayer();
+    CVehicle* vehicle = player->m_pVehicle;
+    auto* pool = CheckedVehiclePool();
+    if (!pool) return -1;
+    const auto address = reinterpret_cast<std::uintptr_t>(vehicle);
+    const auto base = reinterpret_cast<std::uintptr_t>(pool->m_pObjects);
+    if (address < base || (address - base) % sizeof(CHeli) != 0) return -1;
+    const auto index = (address - base) / sizeof(CHeli);
+    if (index >= static_cast<unsigned int>(pool->m_nSize)
+        || !Accessible(pool->m_byteMap + index, sizeof(tPoolObjectFlags))
+        || pool->m_byteMap[index].bEmpty || vehicle->m_nType != ENTITY_TYPE_VEHICLE) return -1;
+    VehicleHandle* entry = nullptr;
+    for (auto& slot : vehicleHandles)
+        if (!slot.token) { entry = &slot; break; }
+    if (!entry || nextVehicleToken == 0x7FFFFFFF) return -2;
+    *entry = {++nextVehicleToken, vehicle, pool, pool->m_pObjects,
+        (static_cast<int>(index) << 8) | pool->m_byteMap[index].IntValue()};
+    using Reference = void (__thiscall*)(CEntity*, CEntity**);
+    reinterpret_cast<Reference>(0x571B70)(vehicle, &entry->entity);
+    if (!HasVehicleReference(vehicle, &entry->entity))
+    {
+        *entry = {};
+        return -2; // GTA reference pool exhausted: never expose an untracked pointer.
+    }
+    *token = entry->token;
     return 1;
+}
+
+BOOL sdk::VehicleHandleValid(DWORD token) noexcept
+{
+    return game::IsGameThread() && game::IsReady() && ResolveVehicleHandle(FindVehicleHandle(token)) ? TRUE : FALSE;
+}
+
+int sdk::VehicleHandleInfo(DWORD token, SpaPlayerVehicle* value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return -1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return -2;
+    return ReadVehicleData(vehicle, value) ? 1 : -1;
+}
+
+void sdk::CloseVehicleHandle(DWORD token) noexcept
+{
+    if (!game::IsGameThread()) return;
+    auto* entry = FindVehicleHandle(token);
+    if (!entry) return;
+    if (auto* vehicle = ResolveVehicleHandle(entry))
+    {
+        using Reference = void (__thiscall*)(CEntity*, CEntity**);
+        reinterpret_cast<Reference>(0x571A00)(vehicle, &entry->entity);
+    }
+    *entry = {};
 }
 
 int sdk::RequestModel(int model, DWORD* token) noexcept

@@ -44,8 +44,8 @@ wird separat mit C++17 übersetzt; die übrige Runtime nutzt weiterhin C++20.
 
 ## Paketvertrag und Kompatibilität
 
-- Aktuelle Paketversion: `0.15.0-dev.1`.
-- Aktuelle interne Host-API: Version `15` (Hintergrundjobs mit Ergebnisqueue).
+- Aktuelle Paketversion: `0.16.0-dev.1`.
+- Aktuelle interne Host-API: Version `16` (geprüfte Fahrzeug-Handles).
 - Python: `sanandreas.__version__`.
 - Diagnoseattribute: `_host_api_version`, `_binding_backend`, `_sdk_revision`.
 - ASI/Runtime-Abweichungen werden einmal sichtbar gemeldet.
@@ -61,14 +61,14 @@ nur interne Runtime-Dateien, Typdefinitionen und benannte Beispiele werden erneu
 ## Abnahme unter Windows
 
 1. `Build-Release.cmd` ausführen; es baut Host, Runtime und ein Testmodul neu.
-2. Die 31 nativen Tests müssen bestehen. Sie importieren dieselbe
+2. Die 34 nativen Tests müssen bestehen. Sie importieren dieselbe
    `Bindings.cpp` als `Release/tests/sanandreas.pyd` mit einem simulierten Host.
    Dieses Testmodul gehört nicht ins GTA-Paket.
 3. Die Paketprüfung muss `Complete Release bundle verified` erreichen.
 4. ASI und Datenpaket gemeinsam installieren; vorhandene Skripte beibehalten.
 5. Das unveränderte F5-Beispiel im Spiel prüfen: einmaliges Heilen, Gedrückthalten,
    Pause, Fokuswechsel und fehlender/toter Spieler.
-6. Im Log müssen `pybind11-2.13.6` und Host-API `15` stehen.
+6. Im Log müssen `pybind11-2.13.6` und Host-API `16` stehen.
 
 Die nativen Tests prüfen Argumentkonvertierungen, Exceptions und Threadprüfungen;
 sie führen keine GTA-Speicherzugriffe aus. Layoutprüfungen laufen beim x86-Build.
@@ -412,4 +412,47 @@ Timer-/Eventregistrierung im Worker wird abgewiesen. Native Tests prüfen die
 Thread-Grenze zusätzlich mit einem echten Python-Thread und kompilierten Bindings.
 
 Prüfstand API 15: Release/x86-Build, 31 native Tests, 70 Python-Tests und
+Paketprüfung bestanden. Spielabnahme offen.
+
+## Geprüfte Fahrzeug-Handles (API 16, Spielabnahme offen)
+
+ABI ergänzt capturePlayerVehicle, vehicleHandleValid, vehicleHandleInfo und
+closeVehicleHandle. Daten laufen weiter als SpaPlayerVehicle über die Grenze;
+Python sieht lediglich prozessweit nicht wiederverwendete positive Tokens.
+Native Registry aus 128 festen Slots, damit die Adressen der CEntity*-Felder
+für GTAs Referenzverwaltung stabil bleiben. Keine Fahrzeugbesitzübernahme.
+
+Pool: CPool<CVehicle,CHeli> aus dem gepinnten SDK, Pointer bei 0xB74494
+(CPools.cpp). Vor Zugriff Header, Größe (1..100000), Pointer, Index, Slotflag,
+Belegung und Generation prüfen; Fahrzeugadresse muss exakt zum Slot passen.
+Das aus SDK-Feldern gebildete Ref enthält Slotindex und Generationsbyte.
+Zusätzlich prüft jeder Zugriff registrierte CReference, Entity-Typ und Speicher.
+
+CEntity.cpp dokumentiert RegisterReference (0x571B70), CleanUpOldReference
+(0x571A00) und ResolveReferences (0x571A40). GTA setzt beim Auflösen die stabile
+Registry-Pointeradresse auf null. Nach Registrierung wird geprüft, dass der
+Eintrag tatsächlich in der Referenzliste vorhanden ist; Erschöpfung führt zu
+Fehler statt ungeschütztem Handle. Listenprüfung ist auf 4096 Einträge begrenzt.
+Das schützt auch gegen Wiederverwendung mit gewrapptem Generationsbyte.
+Quervergleich: [gta-reversed Entity](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Entity/Entity.cpp).
+
+Bei close wird nur eine noch gültig auflösbare Referenz abgemeldet und der feste
+Slot geleert. Eine entfernte/invalidierte Entity wird nicht blind dereferenziert.
+Das Fahrzeug wird weder persistent gesetzt noch gelöscht. close ist während
+Pause auf dem Spielthread erlaubt; valid ist bei inaktivem Spiel vorübergehend
+falsch, ohne den Handle dauerhaft zu schließen. Info meldet bei entferntem Objekt
+InvalidVehicleError, bei inaktivem Spiel RuntimeError. Beschädigte/fehlende
+Positionsdaten führen ebenfalls zu RuntimeError.
+
+Python Vehicle stellt live geprüfte model_id/health/position/snapshot bereit,
+closed/valid sowie close und Kontextmanager. player.vehicle_handle ist explizit
+von der unveränderlichen player.vehicle-Momentaufnahme getrennt. Snapshot-
+is_driver wird relativ zum aktuellen Spieler neu bestimmt. Uhrreset und globaler
+Cleanup schließen alle offenen Handles; kein nativer Aufruf aus __del__.
+
+Tests simulieren Objektentfernung mit identischem wiederverwendetem Slot und
+Generation, Fahrzeugwechsel, dynamische Daten, Referenzlimit, Pause, Thread-
+Prüfung, explizites/context Close und das B/Z/X-Beispiel. Native Referenzlisten
+und echte Pool-Reuse-Fälle brauchen den Spieltest.
+Prüfstand API 16: Release/x86-Build, 34 native Tests, 74 Python-Tests und
 Paketprüfung bestanden. Spielabnahme offen.

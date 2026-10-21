@@ -18,6 +18,10 @@ namespace sdk
     int RequestModel(int model, DWORD* token) noexcept;
     int ModelReady(DWORD token) noexcept;
     void ReleaseModel(DWORD token) noexcept;
+    int CapturePlayerVehicle(DWORD* token) noexcept;
+    BOOL VehicleHandleValid(DWORD token) noexcept;
+    int VehicleHandleInfo(DWORD token, SpaPlayerVehicle* value) noexcept;
+    void CloseVehicleHandle(DWORD token) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

@@ -14,7 +14,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 15
+BOOTSTRAP_API_VERSION = 16
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -43,6 +43,7 @@ _claimed_generators = set()
 _next_task_id = 0
 _cancelling = False
 _models = {}
+_vehicles = {}
 _background_jobs = {}
 _next_background_id = 0
 _work_queue = queue.Queue(maxsize=32)
@@ -107,6 +108,8 @@ def _cancel_timers(clock=None):
         # Invalidate them on any detected game-clock reset, including real-time tasks.
         for model in tuple(_models.values()):
             model.release()
+        for vehicle in tuple(_vehicles.values()):
+            vehicle.close()
         for job in tuple(_background_jobs.values()):
             job.cancel()
         # Canceled workers cannot commit any more envelopes after this drain.
@@ -667,6 +670,55 @@ class WeaponType(IntEnum):
     CAMERA = 43
 
 
+class Vehicle:
+    """Checked handle to one vehicle. Closing unregisters it, never deletes it."""
+    __slots__ = ("_token",)
+
+    def __init__(self, token):
+        self._token = token
+
+    @property
+    def closed(self):
+        return self._token == 0
+
+    @property
+    def valid(self):
+        return not self.closed and sa._vehicle_handle_valid(self._token)
+
+    @property
+    def snapshot(self):
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        return sa._vehicle_info(self._token)
+
+    @property
+    def model_id(self):
+        return self.snapshot.model_id
+
+    @property
+    def health(self):
+        return self.snapshot.health
+
+    @property
+    def position(self):
+        return self.snapshot.position
+
+    def close(self):
+        sa._require_game_thread()
+        if not self.closed:
+            sa._close_vehicle_handle(self._token)
+            _vehicles.pop(self._token, None)
+            self._token = 0
+
+    def __enter__(self):
+        _ = self.snapshot  # Validate state and object identity before entering.
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_trace):
+        self.close()
+        return False
+
+
 class Player:
     """A view of the current player, resolved again on every property access."""
     __slots__ = ()
@@ -694,6 +746,18 @@ class Player:
     def vehicle(self):
         """Detached read-only vehicle snapshot, or None while on foot."""
         return sa._player_vehicle()
+
+    @property
+    def vehicle_handle(self):
+        """New checked handle to this vehicle, or None on foot. Close when unused."""
+        if _cancelling:
+            raise RuntimeError("cannot acquire vehicle handles during cleanup or clock reset")
+        token = sa._capture_player_vehicle()
+        if token is None:
+            return None
+        vehicle = Vehicle(token)
+        _vehicles[token] = vehicle
+        return vehicle
 
     @property
     def in_vehicle(self):
@@ -794,6 +858,7 @@ sa.on_game_ready = on_game_ready
 sa.on_frame = on_frame
 sa.on_key_down = on_key_down
 sa.Player = Player
+sa.Vehicle = Vehicle
 sa.WeaponType = WeaponType
 sa.player = player
 sa.Timer = Timer

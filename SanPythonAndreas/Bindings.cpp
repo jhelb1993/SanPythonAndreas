@@ -16,6 +16,7 @@ void InstallTestControls(py::module_& module);
 namespace
 {
     const SpaHostApi* host = nullptr;
+    struct InvalidVehicle : std::runtime_error { using std::runtime_error::runtime_error; };
 
     struct VehicleInfo
     {
@@ -165,7 +166,8 @@ PYBIND11_MODULE(sanandreas, module)
         .def("__repr__", [](const Vector3& self) {
             return py::str("Vector3({!r}, {!r}, {!r})").format(self.x, self.y, self.z);
         });
-    py::class_<VehicleInfo>(module, "VehicleInfo", "Immutable snapshot of the player's current vehicle; no game pointers")
+    py::register_exception<InvalidVehicle>(module, "InvalidVehicleError", PyExc_RuntimeError);
+    py::class_<VehicleInfo>(module, "VehicleInfo", "Immutable vehicle snapshot; no game pointers")
         .def_readonly("model_id", &VehicleInfo::modelId)
         .def_readonly("is_driver", &VehicleInfo::isDriver)
         .def_readonly("health", &VehicleInfo::health)
@@ -180,6 +182,31 @@ PYBIND11_MODULE(sanandreas, module)
             throw std::runtime_error("invalid vehicle snapshot");
         return py::cast(VehicleInfo{value.modelId, value.isDriver != FALSE, value.health,
             Vector3(value.x, value.y, value.z)});
+    });
+    module.def("_capture_player_vehicle", []() -> py::object {
+        RequireGameThread();
+        DWORD token = 0;
+        const int state = host->capturePlayerVehicle(&token);
+        if (state == 0) return py::none();
+        if (state == -2) throw std::runtime_error("vehicle handle/reference limit reached; close unused handles");
+        if (state != 1) throw std::runtime_error("no active player or vehicle seat unavailable");
+        return py::int_(token);
+    });
+    module.def("_vehicle_handle_valid", [](py::handle token) {
+        RequireGameThread();
+        return host->vehicleHandleValid(BoundedInteger(token, 0x7FFFFFFF, "vehicle token")) != FALSE;
+    });
+    module.def("_vehicle_info", [](py::handle token) {
+        RequireGameThread();
+        SpaPlayerVehicle value{};
+        const int state = host->vehicleHandleInfo(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &value);
+        if (state == -2) throw InvalidVehicle("vehicle was removed, its slot reused, or the handle closed");
+        if (state != 1) throw std::runtime_error("vehicle data requires active gameplay and finite vehicle state");
+        return VehicleInfo{value.modelId, value.isDriver != FALSE, value.health, Vector3(value.x, value.y, value.z)};
+    });
+    module.def("_close_vehicle_handle", [](py::handle token) {
+        RequireGameThread();
+        host->closeVehicleHandle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"));
     });
     module.def("show_text", &ShowText, py::arg("text"), py::pos_only());
     module.def("_is_key_down", [](py::handle value) {
