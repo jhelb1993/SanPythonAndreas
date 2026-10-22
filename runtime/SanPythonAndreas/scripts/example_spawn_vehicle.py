@@ -2,6 +2,7 @@
 
 C: spawn, E: driver, Q: exit, D: remove, F2: colors, F3: health 500, F4: repair.
 F1: turn 90 degrees, G: set forward speed to 15 m/s while driving, H: stop.
+J: bring empty car nearby, U: save car position/area/heading, R: return.
 
 Use outdoors with room next to the player. Exit before removing the car.
 """
@@ -10,6 +11,7 @@ import sanandreas as sa
 
 _vehicle = None
 _task = None
+_bookmark = None
 
 
 def _spawn():
@@ -91,6 +93,51 @@ def cycle_colors():
     except (RuntimeError, ValueError) as error:
         print("Vehicle color change rejected:", error)
         sa.show_text("Cannot recolor this vehicle. See the Python log.")
+
+
+@sa.on_key_down("J")
+def bring_infernus():
+    try:
+        player = sa.player()
+        if _vehicle is None or player is None:
+            sa.show_text("Spawn an Infernus with C first.")
+            return
+        if _vehicle.snapshot.is_driver:
+            sa.show_text("Exit your Infernus before bringing it nearby.")
+            return
+        angle = math.radians(player.heading)
+        target = player.position + sa.Vector3(math.cos(angle) * 5, math.sin(angle) * 5, 1)
+        _vehicle.teleport(target, interior=player.interior)
+        sa.show_text("Infernus brought nearby.")
+    except (RuntimeError, ValueError) as error:
+        print("Vehicle teleport rejected:", error)
+        sa.show_text("Need an empty, unattached car and an open destination.")
+
+
+@sa.on_key_down("U")
+def save_infernus_position():
+    global _bookmark
+    try:
+        if _vehicle is not None:
+            _bookmark = (_vehicle.position, _vehicle.interior, _vehicle.heading)
+            sa.show_text("Car position saved. R: return.")
+    except RuntimeError as error:
+        print("Cannot save vehicle position:", error)
+
+
+@sa.on_key_down("R")
+def restore_infernus_position():
+    try:
+        if _vehicle is None or _bookmark is None:
+            sa.show_text("Save your car position with U first.")
+            return
+        position, interior, heading = _bookmark
+        _vehicle.teleport(position, interior=interior)
+        _vehicle.heading = heading
+        sa.show_text("Car position restored.")
+    except (RuntimeError, ValueError) as error:
+        print("Vehicle return rejected:", error)
+        sa.show_text("Drive the car, or stand within 100 m of its saved destination.")
 
 
 @sa.on_key_down("F1")

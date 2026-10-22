@@ -14,6 +14,7 @@ import sanandreas as sa
 bookmark = None
 vehicle = None
 spawned_vehicle = None
+car_bookmark = None
 timers = []
 task = None
 job = None
@@ -257,6 +258,31 @@ def cycle_vehicle_colors():
 def turn_vehicle():
     if spawned_vehicle is not None:
         spawned_vehicle.heading += 90
+
+
+@key("J")  # Bring the empty car nearby, including from another interior.
+def bring_vehicle():
+    if spawned_vehicle is not None and not spawned_vehicle.snapshot.is_driver:
+        p = player()
+        angle = math.radians(p.heading)
+        target = p.position + sa.Vector3(math.cos(angle) * 5, math.sin(angle) * 5, 1)
+        spawned_vehicle.teleport(target, interior=p.interior)
+
+
+@key("U")  # Save the car's detached position, interior and heading.
+def save_car_position():
+    global car_bookmark
+    if spawned_vehicle is not None:
+        car_bookmark = (spawned_vehicle.position, spawned_vehicle.interior, spawned_vehicle.heading)
+
+
+@key("R")  # Return; drive the car or stand within 100 m of the saved destination.
+def restore_car_position():
+    if spawned_vehicle is not None and car_bookmark is not None:
+        position, interior, heading = car_bookmark
+        spawned_vehicle.teleport(position, interior=interior)
+        spawned_vehicle.heading = heading
+        # spawned_vehicle.position = position also works, keeping its current area.
 
 
 @key("G")  # Driver only: set forward velocity to 15 m/s (54 km/h).

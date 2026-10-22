@@ -359,6 +359,25 @@ PYBIND11_MODULE(sanandreas, module)
         VehicleMotionStatus(host->setVehicleVelocity(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"),
             static_cast<float>(value.x), static_cast<float>(value.y), static_cast<float>(value.z)));
     });
+    module.def("_vehicle_interior", [](py::handle token) {
+        RequireGameThread();
+        int area = 0;
+        VehicleMotionStatus(host->vehicleInterior(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &area));
+        return area;
+    });
+    module.def("_teleport_vehicle", [](py::handle token, const Vector3& target, py::object interior) {
+        RequireGameThread();
+        const int area = interior.is_none() ? -1 : BoundedInteger(interior, 255, "interior");
+        if (std::fabs(target.x) > 20000 || std::fabs(target.y) > 20000
+            || target.z < -1000 || target.z > 10000)
+            throw py::value_error("target outside supported bounds: x/y +/-20000, z -1000..10000");
+        const int result = host->teleportVehicle(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"),
+            static_cast<float>(target.x), static_cast<float>(target.y), static_cast<float>(target.z), area);
+        if (result == 5)
+            throw std::runtime_error("empty-car destination must be in the player's interior and within 100 metres");
+        if (result == 4) throw py::value_error("invalid vehicle teleport target");
+        VehicleMotionStatus(result);
+    });
     module.def("_set_vehicle_color", [](py::handle token, py::handle channel, py::handle color) {
         RequireGameThread();
         const int index = BoundedInteger(channel, 1, "color channel");

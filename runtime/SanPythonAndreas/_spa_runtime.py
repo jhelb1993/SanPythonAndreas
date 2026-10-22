@@ -14,7 +14,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 21
+BOOTSTRAP_API_VERSION = 22
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -717,6 +717,29 @@ class Vehicle:
     @property
     def position(self):
         return self.snapshot.position
+
+    @position.setter
+    def position(self, value):
+        self.teleport(value)
+
+    @property
+    def interior(self):
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        return sa._vehicle_interior(self._token)
+
+    def teleport(self, target, *, interior=None):
+        """Move this car, clearing velocity. None keeps its current interior.
+
+        A player-driven car moves its occupants and can change world area.
+        Empty cars may target only the player's area within 100 m.
+        """
+        sa._require_game_thread()
+        if _cancelling:
+            raise RuntimeError("cannot teleport vehicles during cleanup or clock reset")
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        sa._teleport_vehicle(self._token, target, interior)
 
     def _colors(self):
         if self.closed:

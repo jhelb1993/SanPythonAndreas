@@ -872,6 +872,62 @@ int sdk::SetVehicleVelocity(DWORD token, float x, float y, float z) noexcept
     return 0;
 }
 
+int sdk::VehicleInterior(DWORD token, int* area) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE) return 3;
+    *area = vehicle->m_nAreaCode;
+    return 0;
+}
+
+int sdk::TeleportVehicle(DWORD token, float x, float y, float z, int interior) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady() || !LivingPlayer()) return 1;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
+        || std::fabs(x) > 20000 || std::fabs(y) > 20000 || z < -1000 || z > 10000
+        || interior < -1 || interior > 255) return 4;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    auto* player = FindCurrentPlayer();
+    if (!CanChangeVehicleMotion(vehicle)) return 3;
+    const int area = interior == -1 ? vehicle->m_nAreaCode : interior;
+    if (player->m_nPedFlags.bInVehicle && player->m_pVehicle == vehicle)
+    {
+        if (vehicle->m_pDriver != player) return 3;
+        // Existing path handles occupants, scene/collision streaming, world area,
+        // portal state and camera. It preserves the vehicle's heading.
+        const int result = TeleportPlayer(x, y, z, area);
+        if (result == 0) return 0;
+        if (result == 4) return 4;
+        return result == 1 ? 1 : 3;
+    }
+    // Never move NPCs/passengers independently of their tasks or warp a vehicle
+    // targeted by a pending entry/exit animation.
+    if (VehicleBusy(vehicle) || (player->m_pVehicle == vehicle && PedChangingVehicle(player))) return 3;
+    float px = 0, py = 0, pz = 0;
+    if (!ReadPlayerPosition(&px, &py, &pz)) return 1;
+    const double dx = static_cast<double>(x) - px, dy = static_cast<double>(y) - py,
+                 dz = static_cast<double>(z) - pz;
+    if (area != PlayerInterior() || dx * dx + dy * dy + dz * dz > 10000) return 5;
+    auto** table = *reinterpret_cast<void***>(vehicle);
+    if (!Accessible(table, 15 * sizeof(void*)) || !table[14]) return 1;
+    const auto* storage = vehicle->m_matrix ? &vehicle->m_matrix->pos : &vehicle->m_placement.m_vPosn;
+    if (!Accessible(storage, sizeof(CVector))) return 1;
+    CVector target(*storage);
+    target.x = x; target.y = y; target.z = z;
+    reinterpret_cast<decltype(&CStreaming::LoadSceneCollision)>(0x40ED80)(&target);
+    // Do not change CGame::currArea, player state, camera or whole-world streaming
+    // when moving an empty car. Only its own area and spatial membership change.
+    vehicle->m_nAreaCode = static_cast<unsigned char>(area);
+    reinterpret_cast<void (__thiscall*)(CEntity*, CVector, bool)>(table[14])(vehicle, target, false);
+    vehicle->m_vecMoveSpeed.x = vehicle->m_vecMoveSpeed.y = vehicle->m_vecMoveSpeed.z = 0;
+    vehicle->m_vecTurnSpeed.x = vehicle->m_vecTurnSpeed.y = vehicle->m_vecTurnSpeed.z = 0;
+    WakeVehicle(vehicle);
+    return 0;
+}
+
 int sdk::RequestModel(int model, DWORD* token) noexcept
 {
     if (!game::IsGameThread() || !game::IsReady()) return 1;

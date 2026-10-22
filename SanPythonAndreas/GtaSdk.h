@@ -35,6 +35,8 @@ namespace sdk
     int VehicleMotion(DWORD token, SpaVehicleMotion* value) noexcept;
     int SetVehicleHeading(DWORD token, float degrees) noexcept;
     int SetVehicleVelocity(DWORD token, float x, float y, float z) noexcept;
+    int VehicleInterior(DWORD token, int* area) noexcept;
+    int TeleportVehicle(DWORD token, float x, float y, float z, int interior) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

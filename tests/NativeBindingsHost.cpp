@@ -66,6 +66,7 @@ namespace
         int primary = 3, secondary = 6;
         float heading = 0, vx = 0, vy = 0, vz = 0;
         bool motionBlocked = false;
+        int interior = 0;
     };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
@@ -130,6 +131,16 @@ namespace
         car.vx = x; car.vy = y; car.vz = z;
         return 0;
     }
+    int __cdecl VehicleInterior(DWORD token, int* area)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        *area = car.interior;
+        return 0;
+    }
+    int __cdecl TeleportVehicle(DWORD token, float x, float y, float z, int area);
     int __cdecl VehicleColors(DWORD token, int* primary, int* secondary)
     {
         if (!ready) return 1;
@@ -382,13 +393,41 @@ namespace
         heading = value;
         return 0;
     }
+    int __cdecl TeleportVehicle(DWORD token, float x, float y, float z, int area)
+    {
+        if (!ready || health <= 0) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported || car.wrecked || car.motionBlocked || car.data.health <= 0 || teleportStatus) return 3;
+        const int targetArea = area == -1 ? car.interior : area;
+        const int entity = vehicleHandles.at(token).entity;
+        const bool driving = entity == currentVehicleId && vehicleState == 1 && vehicleData.isDriver;
+        if (!driving)
+        {
+            if ((entity == currentVehicleId && vehicleState == 1)
+                || (ownedVehicles.count(entity) && ownedVehicles[entity])) return 3;
+            const double dx = x - positionX, dy = y - positionY, dz = z - positionZ;
+            if (targetArea != currentArea || dx * dx + dy * dy + dz * dz > 10000) return 5;
+        }
+        car.data.x = x; car.data.y = y; car.data.z = z;
+        car.interior = targetArea;
+        car.vx = car.vy = car.vz = 0;
+        if (driving)
+        {
+            positionX = x; positionY = y; positionZ = z;
+            currentArea = targetArea;
+            vehicleData = car.data;
+        }
+        return 0;
+    }
+
     const SpaHostApi api{sizeof(SpaHostApi), IsReady, IsThread, ShowText, Log,
         KeyDown, Focus, ReadHealth, WriteHealth, spa::HostApiVersion, spa::PackageVersion, ReadPosition, Interior, Teleport, ReadHeading, WriteHeading, ReadArmour, WriteArmour,
         ReadMoney, WriteMoney, ReadWantedLevel, WriteWantedLevel, ReadWeapon, WeaponAction, ReadVehicle, GameTimeMs,
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
         SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
         SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor,
-        VehicleMotion, SetVehicleHeading, SetVehicleVelocity};
+        VehicleMotion, SetVehicleHeading, SetVehicleVelocity, VehicleInterior, TeleportVehicle};
     struct Init
     {
         Init() { bindings::SetHost(&api); }

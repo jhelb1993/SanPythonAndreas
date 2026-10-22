@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 21
+        self.api._host_api_version = 22
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -93,6 +93,9 @@ class RuntimeTests(unittest.TestCase):
         self.api._vehicle_motion = self.read_vehicle_motion
         self.api._set_vehicle_heading = self.set_vehicle_heading
         self.api._set_vehicle_velocity = self.set_vehicle_velocity
+        self.vehicle_areas = {}
+        self.api._vehicle_interior = self.read_vehicle_interior
+        self.api._teleport_vehicle = self.teleport_vehicle
         self.repair_count = 0
         self.exit_pending = False
         self.seat_busy = False
@@ -225,6 +228,7 @@ class RuntimeTests(unittest.TestCase):
         entity = 1000 + token
         self.vehicle_objects[entity] = types.SimpleNamespace(
             model_id=model, health=1000, position=position, is_driver=False)
+        self.vehicle_areas[entity] = self.interior
         self.vehicle_handles[token] = entity
         self.owned_vehicles.add(entity)
         return token
@@ -325,6 +329,36 @@ class RuntimeTests(unittest.TestCase):
         if value.x ** 2 + value.y ** 2 + value.z ** 2 > 40000:
             raise ValueError("speed too high")
         self.read_vehicle_motion(token)[1] = value
+
+    def read_vehicle_interior(self, token):
+        self.vehicle_info(token)
+        return self.vehicle_areas.setdefault(self.vehicle_handles[token], self.interior)
+
+    def teleport_vehicle(self, token, target, interior):
+        self.require_game_thread()
+        if not all(hasattr(target, name) for name in ("x", "y", "z")):
+            raise TypeError("target requires Vector3")
+        if interior is not None and (isinstance(interior, bool) or not isinstance(interior, int)):
+            raise TypeError("interior must be int or None")
+        if (interior is not None and not 0 <= interior <= 255) or abs(target.x) > 20000 or abs(target.y) > 20000 or not -1000 <= target.z <= 10000:
+            raise ValueError("invalid target")
+        area = self.read_vehicle_interior(token) if interior is None else interior
+        entity = self.vehicle_handles[token]
+        driving = self.vehicle_data is not None and entity == self.current_vehicle_id and self.vehicle_data.is_driver
+        if self.transition or (entity in self.busy_owned_vehicles and not driving):
+            raise RuntimeError("busy vehicle")
+        if not driving:
+            distance = sum((a - b) ** 2 for a, b in zip((target.x, target.y, target.z), self.position))
+            if area != self.interior or distance > 10000:
+                raise RuntimeError("empty car destination must be near player in same area")
+        data = self.vehicle_objects[entity]
+        data.position = target
+        self.vehicle_areas[entity] = area
+        if entity in self.vehicle_motion:
+            self.vehicle_motion[entity][1] = types.SimpleNamespace(x=0, y=0, z=0)
+        if driving:
+            self.position = (target.x, target.y, target.z)
+            self.interior = area
 
     def read_weapon(self):
         if self.stats is None:
@@ -589,7 +623,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 21
+        self.api._host_api_version = 22
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1656,6 +1690,76 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_empty_vehicle_teleport_preserves_player_and_snapshot_and_checks_area(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        old = car.snapshot
+        target = types.SimpleNamespace(x=20, y=-30, z=8)
+        car.heading = 90
+        original_player = self.position
+        car.position = target
+        self.assertIs(car.position, target)
+        self.assertEqual(old.position, (1, 2, 3))
+        self.assertEqual(car.heading, 90)
+        self.assertEqual(self.position, original_player)
+        with self.assertRaises(RuntimeError):
+            car.teleport(target, interior=3)
+        with self.assertRaises(RuntimeError):
+            car.teleport(types.SimpleNamespace(x=1000, y=0, z=0))
+        self.interior = 3
+        with self.assertRaises(RuntimeError):
+            car.position = target  # keeps car area 0, which is not the player's area
+        car.teleport(target, interior=3)
+        self.assertEqual(car.interior, 3)
+        self.assertEqual(self.interior, 3)
+
+    def test_driven_vehicle_teleport_moves_player_and_switches_interior(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        p = self.api.player()
+        p.enter_vehicle(car)
+        car.heading = 90
+        car.velocity = types.SimpleNamespace(x=10, y=0, z=0)
+        car.teleport(types.SimpleNamespace(x=1000, y=2000, z=20), interior=3)
+        self.assertEqual(self.position, (1000, 2000, 20))
+        self.assertEqual((self.interior, car.interior, car.heading), (3, 3, 90))
+        self.assertEqual(car.velocity.x, 0)
+        self.assertTrue(p.is_driver)
+        self.finish_vehicle_exit()  # no pending exit: stays seated
+        self.transition = True
+        with self.assertRaises(RuntimeError):
+            car.teleport(types.SimpleNamespace(x=1001, y=2000, z=20))
+
+    def test_vehicle_teleport_validates_handles_input_thread_and_cleanup(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        target = types.SimpleNamespace(x=20, y=-30, z=8)
+        with self.assertRaises(TypeError):
+            car.position = (1, 2, 3)
+        for area in (True, 1.5, "3"):
+            with self.assertRaises(TypeError):
+                car.teleport(target, interior=area)
+        for area in (-1, 256):
+            with self.assertRaises(ValueError):
+                car.teleport(target, interior=area)
+        self.runtime._cancelling = True
+        with self.assertRaises(RuntimeError):
+            car.teleport(target)
+        self.runtime._cancelling = False
+        self.game_thread = False
+        for action in (lambda: car.interior, lambda: car.teleport(target)):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.game_thread = True
+        self.stats = None
+        with self.assertRaises(RuntimeError):
+            car.teleport(target)
+        self.stats = [25, 100]
+        car.close()
+        for action in (lambda: car.interior, lambda: car.teleport(target)):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
     def test_vehicle_heading_velocity_preserve_identity_and_reject_invalid_access(self):
         self.models_loaded.add(411)
         car = self.api.spawn_vehicle(411, (1, 2, 3))
@@ -1896,6 +2000,14 @@ raise RuntimeError('broken')
             self.runtime._tick(True)
         self.assertEqual(len(self.owned_vehicles), 1)
         self.assertEqual(self.model_leases, {})
+        press("U")
+        entity = next(iter(self.owned_vehicles))
+        saved = self.vehicle_objects[entity].position
+        self.position = (20, 30, 8)
+        press("J")
+        self.assertIsNot(self.vehicle_objects[entity].position, saved)
+        press("R")
+        self.assertIs(self.vehicle_objects[entity].position, saved)
         press("E")
         self.assertTrue(self.api.player().is_driver)
         self.keys.clear()

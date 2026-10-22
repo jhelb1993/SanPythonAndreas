@@ -601,3 +601,35 @@ Infernus example and README: F1 adds 90 degrees, G sets forward velocity to
 The user confirmed vehicle heading and velocity changes in-game.
 Release/x86 build, 85 Python tests, 52 native binding tests and bundle
 verification passed.
+
+## Vehicle position and teleport (API 22)
+
+`Vehicle.position = Vector3(...)` calls `vehicle.teleport(target)`, preserving
+the car's current interior. The new read-only `vehicle.interior` reports its area.
+`vehicle.teleport(target, *, interior=None)` optionally chooses area 0..255;
+None retains the car's area. Heading is preserved and both linear/angular
+velocity are cleared. Exact target Z is used; no ground or obstacle search.
+Bounds match player teleport: x/y +/-20000, z -1000..10000.
+
+For the player's current driver vehicle, the implementation delegates to the
+existing player teleport path, moving occupants and updating scene/collision,
+world area, portal state and camera for an interior change.
+
+Otherwise the car must be empty, including passengers and entry/exit state.
+Its destination must be in the player's current area and within 100 metres of
+the player. An explicit interior can bring an empty car from another area.
+Only destination collision is loaded; the player's world area, position and camera
+are left untouched. Teleport uses CEntity vtable slot 14 and updates the car's
+spatial membership through GTA's own routine.
+
+Normal cars only. Wrecks, NPC-driven/occupied cars, trailers, attachments and
+door transitions are rejected before mutation. Setters require a living player
+and active game thread. Global cleanup rejects new vehicle teleports.
+Synchronous collision loading may briefly pause gameplay.
+
+Example/README keys: J brings the empty Infernus beside the player, U saves
+position/interior/heading and R restores them. Empty-car returns require the
+player to be near that saved destination; driving returns can be distant.
+Game acceptance is pending.
+Release/x86 build, 88 Python tests, 55 native binding tests and bundle
+verification passed.

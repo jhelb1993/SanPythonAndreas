@@ -253,6 +253,10 @@ class Vehicle:
     @property
     def snapshot(self) -> VehicleInfo: ...
     @property
+    def interior(self) -> int:
+        """Current car's world area. 0 is outdoors; normal cars only."""
+        ...
+    @property
     def heading(self) -> float:
         """Degrees [0,360); setter normalizes finite angles and clears angular velocity.
 
@@ -272,6 +276,17 @@ class Vehicle:
         ...
     @velocity.setter
     def velocity(self, value: Vector3) -> None: ...
+    def teleport(self, target: Vector3, *, interior: int | None = None) -> None:
+        """Move this car and clear linear/angular velocity, preserving heading.
+
+        None keeps the car's area. As driver, moves occupants and switches world
+        area using the player teleport path. Empty cars may only target the
+        player's current area within 100 metres; other occupied cars are rejected.
+        Normal cars only, no wrecks/trailers/attachments/entry/exit transitions.
+        Synchronous collision loading may pause briefly. Exact target Z is used;
+        no ground/obstacle search. Bounds: x/y +/-20000, z -1000..10000.
+        """
+        ...
     @property
     def primary_color(self) -> int:
         """Raw primary palette index; setter accepts integers 0..127, not bool.
@@ -309,6 +324,10 @@ class Vehicle:
         ...
     @property
     def position(self) -> Vector3: ...
+    @position.setter
+    def position(self, value: Vector3) -> None:
+        """Same as teleport(value), keeping the vehicle's current interior."""
+        ...
     def close(self) -> None:
         """Idempotent on game thread, also during pause; never deletes the vehicle."""
         ...

@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 21)
+        self.assertEqual(sa._host_api_version, 22)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,75 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_empty_vehicle_teleport_keeps_player_and_heading_and_clears_velocity(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        old = sa._vehicle_info(car)
+        player_position = tuple(sa._player_position())
+        sa._set_vehicle_heading(car, 90)
+        sa._set_vehicle_velocity(car, sa.Vector3(10, 0, 0))
+        sa._teleport_vehicle(car, sa.Vector3(20, -30, 8), None)
+        self.assertEqual(tuple(sa._vehicle_info(car).position), (20, -30, 8))
+        self.assertEqual(tuple(old.position), (0, 0, 0))
+        self.assertEqual(tuple(sa._player_position()), player_position)
+        self.assertEqual(sa._vehicle_motion(car)[0], 90)
+        self.assertEqual(tuple(sa._vehicle_motion(car)[1]), (0, 0, 0))
+        with self.assertRaises(RuntimeError):
+            sa._teleport_vehicle(car, sa.Vector3(1000, 0, 0), None)
+        sa._teleport_player(sa.Vector3(20, -30, 8), 3)
+        with self.assertRaises(RuntimeError):
+            sa._teleport_vehicle(car, sa.Vector3(20, -30, 8), None)
+        sa._teleport_vehicle(car, sa.Vector3(20, -30, 8), 3)
+        self.assertEqual(sa._vehicle_interior(car), 3)
+        self.assertEqual(sa._player_interior(), 3)
+
+    def test_driven_vehicle_teleport_can_move_occupants_across_areas(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        sa._enter_player_vehicle(car, -1)
+        sa._teleport_vehicle(car, sa.Vector3(1000, 2000, 20), 3)
+        self.assertEqual(tuple(sa._player_position()), (1000, 2000, 20))
+        self.assertEqual((sa._player_interior(), sa._vehicle_interior(car)), (3, 3))
+        self.assertTrue(sa._player_vehicle().is_driver)
+        sa._test_teleport_status(2)
+        with self.assertRaises(RuntimeError):
+            sa._teleport_vehicle(car, sa.Vector3(1, 2, 3), 0)
+        self.assertEqual(tuple(sa._vehicle_info(car).position), (1000, 2000, 20))
+
+    def test_vehicle_teleport_validates_input_occupied_state_and_lifetime(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        target = sa.Vector3(20, -30, 8)
+        with self.assertRaises(TypeError):
+            sa._teleport_vehicle(car, (1, 2, 3), None)
+        for area in (True, "3", 1.5):
+            with self.assertRaises(TypeError):
+                sa._teleport_vehicle(car, target, area)
+        for area in (-1, 256):
+            with self.assertRaises(ValueError):
+                sa._teleport_vehicle(car, target, area)
+        for position in (sa.Vector3(20001, 0, 0), sa.Vector3(0, 0, -1001)):
+            with self.assertRaises(ValueError):
+                sa._teleport_vehicle(car, position, None)
+        sa._test_owned_vehicle_busy(car, True)
+        with self.assertRaises(RuntimeError):
+            sa._teleport_vehicle(car, target, None)
+        sa._test_owned_vehicle_busy(car, False)
+        sa._test_vehicle_motion_blocked(car, True)
+        with self.assertRaises(RuntimeError):
+            sa._teleport_vehicle(car, target, None)
+        sa._test_vehicle_motion_blocked(car, False)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (lambda: sa._vehicle_interior(car), lambda: sa._teleport_vehicle(car, target, None)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._close_vehicle_handle(car)
+        for action in (lambda: sa._vehicle_interior(car), lambda: sa._teleport_vehicle(car, target, None)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_vehicle_heading_normalization_velocity_and_detached_values(self):
         sa._test_model_loaded(411, True)

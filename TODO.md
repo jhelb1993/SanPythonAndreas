@@ -140,7 +140,7 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [ ] Modelle über Namen und IDs auflösen und vor dem Erzeugen laden.
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
-- [ ] Position, Heading und Geschwindigkeit lesen/setzten: Heading und Weltgeschwindigkeit ab API 21 vom Nutzer im Spiel bestätigt; Fahrzeugposition bleibt vorerst lesbar.
+- [ ] Position, Heading und Geschwindigkeit lesen/setzten: Heading/Weltgeschwindigkeit ab API 21 vom Nutzer im Spiel bestätigt; Position/Teleport ab API 22 implementiert, Spielabnahme offen.
 - [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 und Primär-/Sekundärfarbe ab API 20 vom Nutzer im Spiel bestätigt; weitere Steuerung folgt.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
@@ -180,6 +180,15 @@ H setzt die lineare Geschwindigkeit auf null. Spielersteuerung bleibt erhalten;
 NPC-Fahrer, Wracks, Anhänger und Übergangszustände werden für Setter abgelehnt.
 Release/x86-Build, 85 Python-Tests, 52 native Binding-Tests und Paketprüfung
 bestanden; Heading und Geschwindigkeit vom Nutzer im Spiel bestätigt.
+
+API 22 ergänzt schreibbare `Vehicle.position`, lesbares `interior` und
+`teleport(target, interior=None)`. Fahrerteleports nutzen den getesteten
+Spielerpfad mit Insassen und Weltbereichswechsel. Leere Fahrzeuge dürfen nur
+in den aktuellen Spielerbereich und höchstens 100 m vom Spieler entfernt
+teleportiert werden; andere besetzte Autos und Anhänger werden abgelehnt.
+Beispiel: J herholen, U Fahrzeugposition speichern, R zurücksetzen.
+Release/x86-Build, 88 Python-Tests, 55 native Binding-Tests und Paketprüfung
+bestanden; Spielabnahme offen.
 
 ## 7. Peds, Objekte und Welt
 
