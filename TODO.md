@@ -141,7 +141,7 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
 - [x] Position, Heading und Geschwindigkeit lesen/setzten: Heading/Weltgeschwindigkeit ab API 21 und Position/Teleport ab API 22 vom Nutzer im Spiel bestätigt.
-- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19, Farben ab API 20 und Motorzustand ab API 23 vom Nutzer im Spiel bestätigt; Türen folgen.
+- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19, Farben ab API 20, Motorzustand ab API 23 und Verriegelung ab API 24 vom Nutzer im Spiel bestätigt; Türbewegung folgt.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
 - [ ] Fahrzeugverlust und Zerstörung über Handles korrekt behandeln.
@@ -196,6 +196,12 @@ GTA/Fahrereingaben können den Motor wieder starten. Ein beschädigter Motor mus
 vor dem Einschalten repariert werden.
 Release/x86-Build, 89 Python-Tests, 57 native Binding-Tests und Paketprüfung
 bestanden; Motorsteuerung vom Nutzer im Spiel bestätigt.
+
+API 24 ergänzt `Vehicle.locked` (bool) für normale Verriegelung. Pos1/Home im
+Infernus-Beispiel schaltet sie um. `enter_vehicle()` verlangt ein offenes Auto.
+Spezielle GTA-/Missions-Sperrmodi werden abgelehnt und nicht überschrieben.
+Release/x86-Build, 90 Python-Tests, 60 native Binding-Tests und Paketprüfung
+bestanden; Verriegelung vom Nutzer im Spiel bestätigt.
 
 ## 7. Peds, Objekte und Welt
 

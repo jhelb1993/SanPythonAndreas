@@ -39,6 +39,8 @@ namespace sdk
     int TeleportVehicle(DWORD token, float x, float y, float z, int interior) noexcept;
     int VehicleEngine(DWORD token, BOOL* value) noexcept;
     int SetVehicleEngine(DWORD token, BOOL value) noexcept;
+    int VehicleLocked(DWORD token, BOOL* value) noexcept;
+    int SetVehicleLocked(DWORD token, BOOL value) noexcept;
     bool ReadPlayerPosition(float* x, float* y, float* z) noexcept;
     int PlayerInterior() noexcept;
     int TeleportPlayer(float x, float y, float z, int interior) noexcept;

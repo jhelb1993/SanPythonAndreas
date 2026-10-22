@@ -4,6 +4,7 @@ C: spawn, E: driver, Q: exit, D: remove, F2: colors, F3: health 500, F4: repair.
 F1: turn 90 degrees, G: set forward speed to 15 m/s while driving, H: stop.
 J: bring empty car nearby, U: save car position/area/heading, R: return.
 V: toggle engine (release acceleration to observe the off state).
+Home: lock/unlock; unlock before entering with E.
 
 Use outdoors with room next to the player. Exit before removing the car.
 """
@@ -107,6 +108,19 @@ def toggle_engine():
     except RuntimeError as error:
         print("Engine change rejected:", error)
         sa.show_text("Cannot change engine state. Repair it if damaged.")
+
+
+@sa.on_key_down(0x24)  # Home
+def toggle_lock():
+    try:
+        if _vehicle is None:
+            sa.show_text("Spawn an Infernus with C first.")
+            return
+        _vehicle.locked = not _vehicle.locked
+        sa.show_text("Car locked." if _vehicle.locked else "Car unlocked.")
+    except RuntimeError as error:
+        print("Vehicle lock change rejected:", error)
+        sa.show_text("Cannot change this car's door lock. See the Python log.")
 
 
 @sa.on_key_down("J")

@@ -68,6 +68,7 @@ namespace
         bool motionBlocked = false;
         int interior = 0;
         bool engineOn = false;
+        int doorLock = 1;
     };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
@@ -142,6 +143,26 @@ namespace
         return 0;
     }
     int __cdecl TeleportVehicle(DWORD token, float x, float y, float z, int area);
+    int __cdecl VehicleLocked(DWORD token, BOOL* value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        if (car.doorLock < 0 || car.doorLock > 2) return 5;
+        *value = car.doorLock == 2 ? TRUE : FALSE;
+        return 0;
+    }
+    int __cdecl SetVehicleLocked(DWORD token, BOOL value)
+    {
+        BOOL previous = FALSE;
+        const int result = VehicleLocked(token, &previous);
+        if (result) return result;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.wrecked || car.motionBlocked || car.data.health <= 0) return 3;
+        car.doorLock = value ? 2 : 1;
+        return 0;
+    }
     int __cdecl VehicleEngine(DWORD token, BOOL* value)
     {
         if (!ready) return 1;
@@ -245,6 +266,8 @@ namespace
         if (seatStatus) return seatStatus;
         if (seat < -1 || seat > 2) return 5;
         auto& handle = vehicleHandles.at(token);
+        if (handleVehicles.at(handle.entity).doorLock != 0
+            && handleVehicles.at(handle.entity).doorLock != 1) return 9;
         currentVehicleId = handle.entity;
         vehicleData = handleVehicles.at(currentVehicleId).data;
         vehicleData.isDriver = seat == -1;
@@ -448,7 +471,7 @@ namespace
         SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
         SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor,
         VehicleMotion, SetVehicleHeading, SetVehicleVelocity, VehicleInterior, TeleportVehicle,
-        VehicleEngine, SetVehicleEngine};
+        VehicleEngine, SetVehicleEngine, VehicleLocked, SetVehicleLocked};
     struct Init
     {
         Init() { bindings::SetHost(&api); }
@@ -457,6 +480,12 @@ namespace
 
 void InstallTestControls(py::module_& module)
 {
+    module.def("_test_vehicle_lock_mode", [](DWORD token, int mode) {
+        handleVehicles.at(vehicleHandles.at(token).entity).doorLock = mode;
+    });
+    module.def("_test_vehicle_lock_mode_value", [](DWORD token) {
+        return handleVehicles.at(vehicleHandles.at(token).entity).doorLock;
+    });
     module.def("_test_vehicle_motion_blocked", [](DWORD token, bool blocked) {
         handleVehicles.at(vehicleHandles.at(token).entity).motionBlocked = blocked;
     });

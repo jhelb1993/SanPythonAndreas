@@ -21,7 +21,7 @@ class RuntimeTests(unittest.TestCase):
         self.output = []
         self.api = types.ModuleType("sanandreas")
         self.api.__version__ = "test"
-        self.api._host_api_version = 23
+        self.api._host_api_version = 24
         self.api._binding_backend = "test-host"
         self.api._sdk_revision = "test"
         self.api.show_text = self.output.append
@@ -100,6 +100,9 @@ class RuntimeTests(unittest.TestCase):
         self.broken_engines = set()
         self.api._vehicle_engine = self.read_vehicle_engine
         self.api._set_vehicle_engine = self.set_vehicle_engine
+        self.vehicle_locks = {}
+        self.api._vehicle_locked = self.read_vehicle_locked
+        self.api._set_vehicle_locked = self.set_vehicle_locked
         self.repair_count = 0
         self.exit_pending = False
         self.seat_busy = False
@@ -265,6 +268,8 @@ class RuntimeTests(unittest.TestCase):
         info = self.vehicle_info(token)
         if self.vehicle_data is not None:
             raise RuntimeError("already in a vehicle")
+        if self.read_vehicle_locked(token):
+            raise RuntimeError("vehicle is locked")
         self.current_vehicle_id = self.vehicle_handles[token]
         self.vehicle_data = types.SimpleNamespace(
             model_id=info.model_id, health=info.health, position=info.position, is_driver=seat == -1)
@@ -378,6 +383,17 @@ class RuntimeTests(unittest.TestCase):
         if value and entity in self.broken_engines:
             raise RuntimeError("broken engine")
         self.vehicle_engines[entity] = value
+
+    def read_vehicle_locked(self, token):
+        self.vehicle_info(token)
+        return self.vehicle_locks.get(self.vehicle_handles[token], False)
+
+    def set_vehicle_locked(self, token, value):
+        self.require_game_thread()
+        if not isinstance(value, bool):
+            raise TypeError("locked must be bool")
+        self.vehicle_info(token)
+        self.vehicle_locks[self.vehicle_handles[token]] = value
 
     def read_weapon(self):
         if self.stats is None:
@@ -642,7 +658,7 @@ raise RuntimeError('broken')
         other = importlib.util.module_from_spec(spec)
         with self.assertRaisesRegex(RuntimeError, "versions differ"):
             spec.loader.exec_module(other)
-        self.api._host_api_version = 23
+        self.api._host_api_version = 24
 
     def test_position_property_rechecks_native_state(self):
         player = self.api.player()
@@ -1709,6 +1725,41 @@ raise RuntimeError('broken')
             traffic.remove()
         self.assertTrue(traffic.valid)
 
+    def test_vehicle_lock_toggle_blocks_entry_and_preserves_other_car_and_repair(self):
+        self.models_loaded.add(411)
+        car = self.api.spawn_vehicle(411, (1, 2, 3))
+        other = self.api.spawn_vehicle(411, (4, 5, 6))
+        self.assertIs(car.locked, False)
+        car.locked = True
+        self.assertIs(car.locked, True)
+        self.assertIs(other.locked, False)
+        with self.assertRaisesRegex(RuntimeError, "locked"):
+            self.api.player().enter_vehicle(car)
+        car.repair()
+        self.assertTrue(car.locked)
+        car.locked = False
+        self.api.player().enter_vehicle(car)
+        self.assertTrue(self.api.player().is_driver)
+        for value in (0, 1, "yes", None):
+            with self.assertRaises(TypeError):
+                car.locked = value
+        self.game_thread = False
+        for action in (lambda: car.locked, lambda: setattr(car, "locked", True)):
+            with self.assertRaises(RuntimeError):
+                action()
+        self.game_thread = True
+        self.stats = None
+        with self.assertRaises(RuntimeError):
+            _ = car.locked
+        self.stats = [25, 100]
+        self.invalid_vehicle_handles.add(car._token)
+        with self.assertRaises(self.api.InvalidVehicleError):
+            car.locked = False
+        other.close()
+        for action in (lambda: other.locked, lambda: setattr(other, "locked", True)):
+            with self.assertRaises(self.api.InvalidVehicleError):
+                action()
+
     def test_vehicle_engine_toggle_preserves_velocity_and_handles_broken_engines(self):
         self.models_loaded.add(411)
         car = self.api.spawn_vehicle(411, (1, 2, 3))
@@ -2065,6 +2116,12 @@ raise RuntimeError('broken')
         self.assertIsNot(self.vehicle_objects[entity].position, saved)
         press("R")
         self.assertIs(self.vehicle_objects[entity].position, saved)
+        for expected in (True, False):
+            self.keys.clear()
+            self.runtime._tick(True)
+            self.keys.add(0x24)  # Home
+            self.runtime._tick(True)
+            self.assertEqual(self.vehicle_locks[entity], expected)
         press("E")
         self.assertTrue(self.api.player().is_driver)
         self.keys.clear()

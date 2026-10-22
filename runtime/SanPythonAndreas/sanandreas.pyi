@@ -253,6 +253,18 @@ class Vehicle:
     @property
     def snapshot(self) -> VehicleInfo: ...
     @property
+    def locked(self) -> bool:
+        """Ordinary door lock; setter accepts only bool, for normal cars.
+
+        GTA NOT_USED/UNLOCKED map to False, LOCKED to True. Special mission/player
+        lock modes raise RuntimeError and are never overwritten. Entry via
+        player.enter_vehicle also requires an unlocked car. This does not close
+        open doors or make the car immune to damage or other scripts.
+        """
+        ...
+    @locked.setter
+    def locked(self, value: bool) -> None: ...
+    @property
     def engine_on(self) -> bool:
         """GTA engine-on flag. Setter accepts only bool, changes it once.
 
@@ -359,7 +371,7 @@ class Player:
         """Immediately warp into a free seat: -1 driver, 0..2 passengers.
 
         Normal stationary cars only, same interior, within 50 metres.
-        Requires a living player on foot, outside jetpack/entry/exit/door
+        Requires an unlocked car and a living player on foot, outside jetpack/entry/exit/door
         transitions. Seat availability depends on model. Never evicts occupants.
         """
         ...

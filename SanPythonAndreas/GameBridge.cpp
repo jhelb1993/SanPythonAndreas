@@ -87,7 +87,8 @@ namespace
         sdk::EnterPlayerVehicle, sdk::LeavePlayerVehicle,
         sdk::SetVehicleHealth, sdk::RepairVehicle, sdk::VehicleColors, sdk::SetVehicleColor,
         sdk::VehicleMotion, sdk::SetVehicleHeading, sdk::SetVehicleVelocity,
-        sdk::VehicleInterior, sdk::TeleportVehicle, sdk::VehicleEngine, sdk::SetVehicleEngine};
+        sdk::VehicleInterior, sdk::TeleportVehicle, sdk::VehicleEngine, sdk::SetVehicleEngine,
+        sdk::VehicleLocked, sdk::SetVehicleLocked};
     SpaTickFunction runtimeTick = nullptr;
     bool runtimeAttempted = false;
 
@@ -202,7 +203,7 @@ void game::StartupLog(const char* message) noexcept
 
 bool game::Install(HMODULE module) noexcept
 {
-    StartupLog("--- ASI loaded: host API 23; Python 3.11 + SDK + pybind11 + checked vehicle handles ---");
+    StartupLog("--- ASI loaded: host API 24; Python 3.11 + SDK + pybind11 + checked vehicle handles ---");
     StartupLog(spa::PackageVersion);
     StartupLog(spa::SdkRevision);
     if (reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000 ||

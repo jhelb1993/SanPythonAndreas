@@ -646,6 +646,7 @@ int sdk::EnterPlayerVehicle(DWORD token, int seat) noexcept
         || reinterpret_cast<void* (__thiscall*)(CPedIntelligence*)>(0x601110)(player->m_pIntelligence))
         return 3;
     if (!StationaryAutomobile(vehicle)) return 4;
+    if (vehicle->m_eDoorLock != DOORLOCK_NOT_USED && vehicle->m_eDoorLock != DOORLOCK_UNLOCKED) return 9;
     if (seat < -1 || seat > 2
         || (seat == -1 ? vehicle->m_pDriver != nullptr
             : seat >= vehicle->m_nMaxPassengers || vehicle->m_apPassengers[seat] != nullptr)) return 5;
@@ -947,6 +948,29 @@ int sdk::SetVehicleEngine(DWORD token, BOOL value) noexcept
     if (value && vehicle->m_nVehicleFlags.bEngineBroken) return 5;
     vehicle->m_nVehicleFlags.bEngineOn = value != FALSE;
     if (value) WakeVehicle(vehicle); // preserve player control; no driving task
+    return 0;
+}
+
+int sdk::VehicleLocked(DWORD token, BOOL* value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE) return 3;
+    if (vehicle->m_eDoorLock != DOORLOCK_NOT_USED && vehicle->m_eDoorLock != DOORLOCK_UNLOCKED
+        && vehicle->m_eDoorLock != DOORLOCK_LOCKED) return 5;
+    *value = vehicle->m_eDoorLock == DOORLOCK_LOCKED ? TRUE : FALSE;
+    return 0;
+}
+
+int sdk::SetVehicleLocked(DWORD token, BOOL value) noexcept
+{
+    BOOL previous = FALSE;
+    const int result = VehicleLocked(token, &previous);
+    if (result) return result;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!CanChangeVehicleMotion(vehicle)) return 3;
+    vehicle->m_eDoorLock = value ? DOORLOCK_LOCKED : DOORLOCK_UNLOCKED;
     return 0;
 }
 

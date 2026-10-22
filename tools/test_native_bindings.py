@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 23)
+        self.assertEqual(sa._host_api_version, 24)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,67 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_lock_blocks_entry_and_preserves_repair_and_other_cars(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        other = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        self.assertIs(sa._vehicle_locked(car), False)
+        sa._set_vehicle_locked(car, True)
+        self.assertIs(sa._vehicle_locked(car), True)
+        self.assertIs(sa._vehicle_locked(other), False)
+        with self.assertRaisesRegex(RuntimeError, "locked"):
+            sa._enter_player_vehicle(car, -1)
+        sa._repair_vehicle(car)
+        self.assertTrue(sa._vehicle_locked(car))
+        sa._set_vehicle_locked(car, False)
+        sa._enter_player_vehicle(car, -1)
+        sa._set_vehicle_locked(car, True)
+        sa._leave_player_vehicle()
+        sa._test_finish_vehicle_exit()
+        self.assertIsNone(sa._player_vehicle())
+        self.assertTrue(sa._vehicle_locked(car))
+
+    def test_special_gta_vehicle_lock_modes_are_not_overwritten(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for mode in range(3, 8):
+            sa._test_vehicle_lock_mode(car, mode)
+            for action in (lambda: sa._vehicle_locked(car),
+                           lambda: sa._set_vehicle_locked(car, False),
+                           lambda: sa._set_vehicle_locked(car, True)):
+                with self.assertRaisesRegex(RuntimeError, "special GTA"):
+                    action()
+            self.assertEqual(sa._test_vehicle_lock_mode_value(car), mode)
+        sa._test_vehicle_lock_mode(car, 0)
+        self.assertFalse(sa._vehicle_locked(car))
+        sa._set_vehicle_locked(car, False)
+        self.assertEqual(sa._test_vehicle_lock_mode_value(car), 1)
+
+    def test_vehicle_lock_validation_and_lifetime_guards(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value in (0, 1, "yes", None):
+            with self.assertRaises(TypeError):
+                sa._set_vehicle_locked(car, value)
+        sa._test_vehicle_motion_blocked(car, True)
+        with self.assertRaises(RuntimeError):
+            sa._set_vehicle_locked(car, True)
+        sa._test_vehicle_motion_blocked(car, False)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (lambda: sa._vehicle_locked(car), lambda: sa._set_vehicle_locked(car, False)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._test_vehicle_damage(car, False, True)
+        for action in (lambda: sa._vehicle_locked(car), lambda: sa._set_vehicle_locked(car, False)):
+            with self.assertRaises(RuntimeError):
+                action()
+        sa._close_vehicle_handle(car)
+        for action in (lambda: sa._vehicle_locked(car), lambda: sa._set_vehicle_locked(car, False)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_vehicle_engine_toggle_repair_and_motion_are_independent(self):
         sa._test_model_loaded(411, True)

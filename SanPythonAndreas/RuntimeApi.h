@@ -67,7 +67,7 @@ struct SpaHostApi
     // Seats: -1 driver, 0..2 passenger indices (if supported by model).
     // Status: 0 success, 1 unavailable/dead, 2 invalid handle, 3 player busy,
     // 4 unsupported/moving/busy car, 5 occupied/nonexistent seat, 6 task allocation,
-    // 7 different interior, 8 farther than 50 metres.
+    // 7 different interior, 8 farther than 50 metres, 9 locked.
     int (__cdecl* enterPlayerVehicle)(DWORD, int);
     int (__cdecl* leavePlayerVehicle)(); // animated request; on foot is a no-op
     // 0 success, 1 inactive, 2 stale handle, 3 unsupported/wrecked/transition,
@@ -88,5 +88,7 @@ struct SpaHostApi
     int (__cdecl* teleportVehicle)(DWORD, float, float, float, int); // area -1 keeps vehicle area
     int (__cdecl* vehicleEngine)(DWORD, BOOL*); // motion statuses; raw engine-on flag
     int (__cdecl* setVehicleEngine)(DWORD, BOOL); // additionally 5: engine broken
+    int (__cdecl* vehicleLocked)(DWORD, BOOL*); // motion statuses; 5: special GTA lock mode
+    int (__cdecl* setVehicleLocked)(DWORD, BOOL); // ordinary unlocked/locked modes only
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

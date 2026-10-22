@@ -70,6 +70,7 @@ namespace
         case 6: throw std::runtime_error("GTA task pool is full");
         case 7: throw std::runtime_error("player and vehicle must be in the same interior");
         case 8: throw std::runtime_error("vehicle must be within 50 metres");
+        case 9: throw std::runtime_error("vehicle is locked; unlock it before entering");
         default: throw std::runtime_error("vehicle seating requires an active living player");
         }
     }
@@ -370,6 +371,22 @@ PYBIND11_MODULE(sanandreas, module)
         BOOL value = FALSE;
         VehicleMotionStatus(host->vehicleEngine(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &value));
         return value != FALSE;
+    });
+    module.def("_vehicle_locked", [](py::handle token) {
+        RequireGameThread();
+        BOOL value = FALSE;
+        const int result = host->vehicleLocked(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &value);
+        if (result == 5) throw std::runtime_error("special GTA door-lock mode is not supported by locked");
+        VehicleMotionStatus(result);
+        return value != FALSE;
+    });
+    module.def("_set_vehicle_locked", [](py::handle token, py::handle value) {
+        RequireGameThread();
+        if (!py::isinstance<py::bool_>(value)) throw py::type_error("locked must be bool");
+        const int result = host->setVehicleLocked(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), value.ptr() == Py_True ? TRUE : FALSE);
+        if (result == 5) throw std::runtime_error("cannot overwrite a special GTA door-lock mode");
+        VehicleMotionStatus(result);
     });
     module.def("_set_vehicle_engine", [](py::handle token, py::handle value) {
         RequireGameThread();

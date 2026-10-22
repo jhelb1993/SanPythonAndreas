@@ -653,3 +653,26 @@ README and the Infernus example bind V to toggle it. Release the accelerator whe
 checking the off state. The user confirmed engine control in-game.
 Release/x86 build, 89 Python tests, 57 native binding tests and bundle
 verification passed.
+
+## Vehicle door locks (API 24)
+
+`vehicle.locked` reads/writes ordinary door locking, accepting only bool on
+assignment. Normal automobiles only, with a valid checked handle and active
+game thread. CVehicle's DOORLOCK_NOT_USED (0) and DOORLOCK_UNLOCKED (1) read False;
+DOORLOCK_LOCKED (2) reads True. Setters write 2 for True and 1 for False.
+Special GTA modes (including mission/player-specific lock modes) raise
+RuntimeError on get/set and are never overwritten.
+
+Setters share the vehicle motion guards: no wrecks, attachments/trailers,
+NPC drivers or entry/exit/door transitions. Locking does not close open doors,
+change engine/velocity or guarantee protection from damage or other scripts.
+Repair leaves the lock state intact.
+
+`player.enter_vehicle()` now checks the lock before warping: only modes 0/1
+allow entry. It raises RuntimeError for locked or special-lock vehicles.
+The ordinary lock mode does not replace GTA's exit handling.
+
+Home/Pos1 (virtual key 0x24) toggles the lock in the Infernus example and README.
+The user confirmed vehicle locking in-game.
+Release/x86 build, 90 Python tests, 60 native binding tests and bundle
+verification passed.

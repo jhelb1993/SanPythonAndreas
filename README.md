@@ -306,6 +306,14 @@ def toggle_engine():
         print("Engine on:", spawned_vehicle.engine_on)
 
 
+@key(0x24)  # Home: lock/unlock.
+def toggle_vehicle_lock():
+    if spawned_vehicle is not None:
+        spawned_vehicle.locked = not spawned_vehicle.locked
+        print("Locked:", spawned_vehicle.locked)
+        # Unlock before entering with E. Special GTA lock modes are rejected.
+
+
 @key("F4")  # Full repair: health, body, doors, windows, tyres and engine/fire state.
 def repair_spawned_vehicle():
     if spawned_vehicle is not None:
