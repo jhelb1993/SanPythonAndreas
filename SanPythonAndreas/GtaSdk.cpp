@@ -928,6 +928,28 @@ int sdk::TeleportVehicle(DWORD token, float x, float y, float z, int interior) n
     return 0;
 }
 
+int sdk::VehicleEngine(DWORD token, BOOL* value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (vehicle->m_nVehicleSubClass != VEHICLE_AUTOMOBILE) return 3;
+    *value = vehicle->m_nVehicleFlags.bEngineOn ? TRUE : FALSE;
+    return 0;
+}
+
+int sdk::SetVehicleEngine(DWORD token, BOOL value) noexcept
+{
+    if (!game::IsGameThread() || !game::IsReady()) return 1;
+    auto* vehicle = ResolveVehicleHandle(FindVehicleHandle(token));
+    if (!vehicle) return 2;
+    if (!CanChangeVehicleMotion(vehicle)) return 3;
+    if (value && vehicle->m_nVehicleFlags.bEngineBroken) return 5;
+    vehicle->m_nVehicleFlags.bEngineOn = value != FALSE;
+    if (value) WakeVehicle(vehicle); // preserve player control; no driving task
+    return 0;
+}
+
 int sdk::RequestModel(int model, DWORD* token) noexcept
 {
     if (!game::IsGameThread() || !game::IsReady()) return 1;

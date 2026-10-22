@@ -365,6 +365,21 @@ PYBIND11_MODULE(sanandreas, module)
         VehicleMotionStatus(host->vehicleInterior(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &area));
         return area;
     });
+    module.def("_vehicle_engine", [](py::handle token) {
+        RequireGameThread();
+        BOOL value = FALSE;
+        VehicleMotionStatus(host->vehicleEngine(BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), &value));
+        return value != FALSE;
+    });
+    module.def("_set_vehicle_engine", [](py::handle token, py::handle value) {
+        RequireGameThread();
+        if (!py::isinstance<py::bool_>(value))
+            throw py::type_error("engine_on must be bool");
+        const int result = host->setVehicleEngine(
+            BoundedInteger(token, 0x7FFFFFFF, "vehicle token"), value.ptr() == Py_True ? TRUE : FALSE);
+        if (result == 5) throw std::runtime_error("engine is broken; repair the vehicle before starting it");
+        VehicleMotionStatus(result);
+    });
     module.def("_teleport_vehicle", [](py::handle token, const Vector3& target, py::object interior) {
         RequireGameThread();
         const int area = interior.is_none() ? -1 : BoundedInteger(interior, 255, "interior");

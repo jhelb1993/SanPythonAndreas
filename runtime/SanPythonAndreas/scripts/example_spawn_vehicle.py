@@ -3,6 +3,7 @@
 C: spawn, E: driver, Q: exit, D: remove, F2: colors, F3: health 500, F4: repair.
 F1: turn 90 degrees, G: set forward speed to 15 m/s while driving, H: stop.
 J: bring empty car nearby, U: save car position/area/heading, R: return.
+V: toggle engine (release acceleration to observe the off state).
 
 Use outdoors with room next to the player. Exit before removing the car.
 """
@@ -93,6 +94,19 @@ def cycle_colors():
     except (RuntimeError, ValueError) as error:
         print("Vehicle color change rejected:", error)
         sa.show_text("Cannot recolor this vehicle. See the Python log.")
+
+
+@sa.on_key_down("V")
+def toggle_engine():
+    try:
+        if _vehicle is None:
+            sa.show_text("Spawn an Infernus with C first.")
+            return
+        _vehicle.engine_on = not _vehicle.engine_on
+        sa.show_text("Engine on." if _vehicle.engine_on else "Engine off.")
+    except RuntimeError as error:
+        print("Engine change rejected:", error)
+        sa.show_text("Cannot change engine state. Repair it if damaged.")
 
 
 @sa.on_key_down("J")

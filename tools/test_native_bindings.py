@@ -21,7 +21,7 @@ class NativeBindingsTests(unittest.TestCase):
         sa._test_reset_vehicle_handles()
 
     def test_package_metadata(self):
-        self.assertEqual(sa._host_api_version, 22)
+        self.assertEqual(sa._host_api_version, 23)
         self.assertEqual(sa._binding_backend, 'pybind11-2.13.6')
         self.assertEqual(len(sa._sdk_revision), 40)
 
@@ -111,6 +111,48 @@ class NativeBindingsTests(unittest.TestCase):
         self.assertIsNone(sa._player_health())
         with self.assertRaises(RuntimeError):
             sa._set_player_health(100)
+
+    def test_vehicle_engine_toggle_repair_and_motion_are_independent(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        other = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        self.assertIs(sa._vehicle_engine(car), False)
+        with self.assertRaisesRegex(RuntimeError, "broken"):
+            sa._set_vehicle_engine(car, True)
+        sa._repair_vehicle(car)
+        self.assertFalse(sa._vehicle_engine(car))
+        sa._set_vehicle_engine(car, True)
+        self.assertIs(sa._vehicle_engine(car), True)
+        self.assertFalse(sa._vehicle_engine(other))
+        sa._set_vehicle_velocity(car, sa.Vector3(10, 0, 0))
+        sa._set_vehicle_engine(car, False)
+        self.assertEqual(tuple(sa._vehicle_motion(car)[1]), (10, 0, 0))
+        sa._set_vehicle_engine(car, False)
+
+    def test_vehicle_engine_validation_threads_and_invalid_handles(self):
+        sa._test_model_loaded(411, True)
+        car = sa._spawn_vehicle(411, sa.Vector3(), 0)
+        for value in (0, 1, 1.0, "on", None):
+            with self.assertRaises(TypeError):
+                sa._set_vehicle_engine(car, value)
+        sa._test_vehicle_motion_blocked(car, True)
+        with self.assertRaises(RuntimeError):
+            sa._set_vehicle_engine(car, False)
+        sa._test_vehicle_motion_blocked(car, False)
+        for control in (sa._test_thread, sa._test_ready):
+            control(False)
+            for action in (lambda: sa._vehicle_engine(car), lambda: sa._set_vehicle_engine(car, False)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            control(True)
+        sa._test_vehicle_damage(car, False, True)
+        for action in (lambda: sa._vehicle_engine(car), lambda: sa._set_vehicle_engine(car, False)):
+            with self.assertRaises(RuntimeError):
+                action()
+        sa._close_vehicle_handle(car)
+        for action in (lambda: sa._vehicle_engine(car), lambda: sa._set_vehicle_engine(car, False)):
+            with self.assertRaises(sa.InvalidVehicleError):
+                action()
 
     def test_empty_vehicle_teleport_keeps_player_and_heading_and_clears_velocity(self):
         sa._test_model_loaded(411, True)

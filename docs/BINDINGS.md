@@ -630,6 +630,26 @@ Synchronous collision loading may briefly pause gameplay.
 Example/README keys: J brings the empty Infernus beside the player, U saves
 position/interior/heading and R restores them. Empty-car returns require the
 player to be near that saved destination; driving returns can be distant.
-Game acceptance is pending.
+The user confirmed vehicle position and teleport in-game.
 Release/x86 build, 88 Python tests, 55 native binding tests and bundle
+verification passed.
+
+## Vehicle engine (API 23)
+
+`vehicle.engine_on` reads GTA's engine-on flag; assigning True/False changes it
+once. Integers, strings and other truthy values are rejected. No speed, damage,
+ownership, player-control or AI-task change is implied. Turning off lets a moving
+car coast; GTA/input can restart it later.
+
+Normal automobiles only, with an active game thread and checked handle.
+Setters share motion guards: no wrecks, attachments/trailers, NPC drivers or
+entry/exit/door transitions. Starting a broken engine is rejected until repair.
+Repair clears engine damage but does not switch the engine on.
+
+The native write targets only CVehicle's bEngineOn bit; enabling wakes physics
+without replacing STATUS_PLAYER. Its role in acceleration is visible in the
+[automobile implementation](https://github.com/gta-reversed/gta-reversed/blob/master/source/game_sa/Entity/Vehicle/Automobile.cpp).
+README and the Infernus example bind V to toggle it. Release the accelerator when
+checking the off state. The user confirmed engine control in-game.
+Release/x86 build, 89 Python tests, 57 native binding tests and bundle
 verification passed.

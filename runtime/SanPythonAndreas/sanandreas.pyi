@@ -253,6 +253,17 @@ class Vehicle:
     @property
     def snapshot(self) -> VehicleInfo: ...
     @property
+    def engine_on(self) -> bool:
+        """GTA engine-on flag. Setter accepts only bool, changes it once.
+
+        Normal cars only. Setter rejects wrecks, attachments, NPC drivers and
+        transitions; starting a broken engine requires repair first.
+        Turning off does not stop motion. GTA/input may restart the engine.
+        """
+        ...
+    @engine_on.setter
+    def engine_on(self, value: bool) -> None: ...
+    @property
     def interior(self) -> int:
         """Current car's world area. 0 is outdoors; normal cars only."""
         ...

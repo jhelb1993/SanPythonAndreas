@@ -299,6 +299,13 @@ def stop_vehicle():
         spawned_vehicle.velocity = sa.Vector3()
 
 
+@key("V")  # Toggle engine once; GTA/acceleration may restart it.
+def toggle_engine():
+    if spawned_vehicle is not None:
+        spawned_vehicle.engine_on = not spawned_vehicle.engine_on
+        print("Engine on:", spawned_vehicle.engine_on)
+
+
 @key("F4")  # Full repair: health, body, doors, windows, tyres and engine/fire state.
 def repair_spawned_vehicle():
     if spawned_vehicle is not None:

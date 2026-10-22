@@ -86,5 +86,7 @@ struct SpaHostApi
     // 0 success, 1 inactive/bad state, 2 stale, 3 unsupported/occupied/transition,
     // 4 invalid target, 5 empty-car destination must be in player's area and within 100 m.
     int (__cdecl* teleportVehicle)(DWORD, float, float, float, int); // area -1 keeps vehicle area
+    int (__cdecl* vehicleEngine)(DWORD, BOOL*); // motion statuses; raw engine-on flag
+    int (__cdecl* setVehicleEngine)(DWORD, BOOL); // additionally 5: engine broken
 };
 using SpaTickFunction = void (__cdecl*)(HMODULE, BOOL, const SpaHostApi*);

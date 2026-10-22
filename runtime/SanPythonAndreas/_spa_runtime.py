@@ -14,7 +14,7 @@ from enum import IntEnum
 
 import sanandreas as sa
 
-BOOTSTRAP_API_VERSION = 22
+BOOTSTRAP_API_VERSION = 23
 if sys.platform == "win32" and sys.version_info[:2] != (3, 11):
     raise RuntimeError("This package requires bundled Python 3.11; loaded " + sys.version.split()[0])
 if getattr(sa, "_host_api_version", None) != BOOTSTRAP_API_VERSION:
@@ -750,6 +750,19 @@ class Vehicle:
         if self.closed:
             raise sa.InvalidVehicleError("vehicle handle is closed")
         return sa._vehicle_motion(self._token)
+
+    @property
+    def engine_on(self):
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        return sa._vehicle_engine(self._token)
+
+    @engine_on.setter
+    def engine_on(self, value):
+        sa._require_game_thread()
+        if self.closed:
+            raise sa.InvalidVehicleError("vehicle handle is closed")
+        sa._set_vehicle_engine(self._token, value)
 
     @property
     def heading(self):

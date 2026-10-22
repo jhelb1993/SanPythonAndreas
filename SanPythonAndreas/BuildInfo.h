@@ -3,8 +3,8 @@
 
 namespace spa
 {
-    inline constexpr DWORD HostApiVersion = 22;
-    inline constexpr char PackageVersion[] = "0.22.0-dev.1";
+    inline constexpr DWORD HostApiVersion = 23;
+    inline constexpr char PackageVersion[] = "0.23.0-dev.1";
     inline constexpr char BindingBackend[] = "pybind11-2.13.6";
     inline constexpr char SdkRevision[] = "62a1080902627b3edec0124acf02127ba8c0dcdb";
 }

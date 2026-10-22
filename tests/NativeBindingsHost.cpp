@@ -67,6 +67,7 @@ namespace
         float heading = 0, vx = 0, vy = 0, vz = 0;
         bool motionBlocked = false;
         int interior = 0;
+        bool engineOn = false;
     };
     struct FakeVehicleHandle { int entity; int generation; bool referenceAlive; };
     std::unordered_map<int, FakeVehicleEntity> handleVehicles;
@@ -141,6 +142,25 @@ namespace
         return 0;
     }
     int __cdecl TeleportVehicle(DWORD token, float x, float y, float z, int area);
+    int __cdecl VehicleEngine(DWORD token, BOOL* value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        const auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported) return 3;
+        *value = car.engineOn ? TRUE : FALSE;
+        return 0;
+    }
+    int __cdecl SetVehicleEngine(DWORD token, BOOL value)
+    {
+        if (!ready) return 1;
+        if (!VehicleValid(token)) return 2;
+        auto& car = handleVehicles.at(vehicleHandles.at(token).entity);
+        if (car.unsupported || car.wrecked || car.motionBlocked || car.data.health <= 0) return 3;
+        if (value && car.engineBroken) return 5;
+        car.engineOn = value != FALSE;
+        return 0;
+    }
     int __cdecl VehicleColors(DWORD token, int* primary, int* secondary)
     {
         if (!ready) return 1;
@@ -427,7 +447,8 @@ namespace
         RequestModel, ModelReady, ReleaseModel, CaptureVehicle, VehicleValid, VehicleInfo, CloseVehicle,
         SpawnVehicle, RemoveVehicle, CleanupOwnedVehicles, EnterVehicle, LeaveVehicle,
         SetVehicleHealth, RepairVehicle, VehicleColors, SetVehicleColor,
-        VehicleMotion, SetVehicleHeading, SetVehicleVelocity, VehicleInterior, TeleportVehicle};
+        VehicleMotion, SetVehicleHeading, SetVehicleVelocity, VehicleInterior, TeleportVehicle,
+        VehicleEngine, SetVehicleEngine};
     struct Init
     {
         Init() { bindings::SetHost(&api); }

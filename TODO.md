@@ -140,8 +140,8 @@ Paketprüfung bestanden. Einzelne Reset-/Fehlerfälle bleiben separat zu prüfen
 - [ ] Modelle über Namen und IDs auflösen und vor dem Erzeugen laden.
 - [x] Fahrzeuge erzeugen und eindeutig als skripteigene Objekte verwalten: API 17 (normale Autos, Außenbereich), vom Nutzer im Spiel bestätigt.
 - [x] Fahrzeuge gültig entfernen und angeforderte Ressourcen freigeben: API 17, vom Nutzer im Spiel bestätigt.
-- [ ] Position, Heading und Geschwindigkeit lesen/setzten: Heading/Weltgeschwindigkeit ab API 21 vom Nutzer im Spiel bestätigt; Position/Teleport ab API 22 implementiert, Spielabnahme offen.
-- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19 und Primär-/Sekundärfarbe ab API 20 vom Nutzer im Spiel bestätigt; weitere Steuerung folgt.
+- [x] Position, Heading und Geschwindigkeit lesen/setzten: Heading/Weltgeschwindigkeit ab API 21 und Position/Teleport ab API 22 vom Nutzer im Spiel bestätigt.
+- [ ] Gesundheit, Reparatur, Farben, Türen und Motorzustand anbieten: Gesundheit/Reparatur ab API 19, Farben ab API 20 und Motorzustand ab API 23 vom Nutzer im Spiel bestätigt; Türen folgen.
 - [ ] Spieler/Peds in passende Sitzplätze setzen und aussteigen lassen: Spieler ab API 18 mit Steuerungsfix vom Nutzer im Spiel bestätigt; Peds folgen.
 - [ ] Fahrzeuge in einem Umkreis suchen.
 - [ ] Fahrzeugverlust und Zerstörung über Handles korrekt behandeln.
@@ -188,7 +188,14 @@ in den aktuellen Spielerbereich und höchstens 100 m vom Spieler entfernt
 teleportiert werden; andere besetzte Autos und Anhänger werden abgelehnt.
 Beispiel: J herholen, U Fahrzeugposition speichern, R zurücksetzen.
 Release/x86-Build, 88 Python-Tests, 55 native Binding-Tests und Paketprüfung
-bestanden; Spielabnahme offen.
+bestanden; Fahrzeugposition und Teleport vom Nutzer im Spiel bestätigt.
+
+API 23 ergänzt `Vehicle.engine_on` als les-/schreibbaren booleschen Motorzustand.
+V im Infernus-Beispiel schaltet ihn um. Ausschalten stoppt keine Bewegung;
+GTA/Fahrereingaben können den Motor wieder starten. Ein beschädigter Motor muss
+vor dem Einschalten repariert werden.
+Release/x86-Build, 89 Python-Tests, 57 native Binding-Tests und Paketprüfung
+bestanden; Motorsteuerung vom Nutzer im Spiel bestätigt.
 
 ## 7. Peds, Objekte und Welt
 
